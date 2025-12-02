@@ -1,15 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  findAccountByEmail,
-  signInWithRememberChoice,
-} from "../data/authStore";
+import { signInWithRememberChoice } from "../data/authStore";
 import {
   Mail,
   ShieldCheck,
   LogIn,
   AlertTriangle,
   CheckCircle2,
+  UsersRound,
 } from "lucide-react";
 import { Card, CardHeader, Button, Pill } from "../components/ui";
 
@@ -21,48 +19,60 @@ function LoginPage() {
   const nav = useNavigate();
 
   const [email, setEmail] = useState("");
+  const [teamCode, setTeamCode] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const emailOk = useMemo(() => isAmazonEmail(email), [email]);
 
-  function handleLogin() {
+  async function handleLogin() {
     setError(null);
     const e = email.trim().toLowerCase();
 
-    if (!emailOk) {
-      setError("Please use a valid @amazon.com email.");
-      return;
-    }
+    if (!emailOk) return setError("Please use a valid @amazon.com email.");
+    if (!teamCode.trim()) return setError("Team code required.");
 
-    const acct = findAccountByEmail(e);
-    if (!acct) {
-      setError("No account found for that email. Please sign up.");
-      return;
-    }
-    if (!acct.verified) {
-      setError("That account isn't verified yet. Please finish sign up.");
-      return;
-    }
+    try {
+      const response = await fetch("http://3.137.44.19:8080/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: e,
+          password: teamCode,
+        }),
+      });
 
-    signInWithRememberChoice(acct.id, rememberMe);
-    nav("/");
+      if (!response.ok) {
+        const data = await response.json();
+        return setError(data.error || "Login failed.");
+      }
+
+      const data = await response.json();
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user_id", data.user_id);
+      localStorage.setItem("username", data.username);
+      signInWithRememberChoice(data.user_id, rememberMe);
+
+      nav("/");
+    } catch (e: any) {
+      setError(e.message ?? "Login failed.");
+    }
   }
 
   return (
     <div className="grid min-h-[80vh] place-items-center px-4">
       <div className="w-full max-w-md space-y-4">
         <Card>
-          <CardHeader title="Generator Ops Login" subtitle="Amazon-only access" />
+          <CardHeader title="Generator Ops Login" subtitle="Team based access" />
 
           <div className="space-y-4 px-4 pb-5">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <div className="flex items-center gap-2 font-extrabold text-slate-900">
                 <ShieldCheck size={16} />
-                Secure access
+                Secure Amazon access
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                Log in using your <b>@amazon.com</b> account.
+                Log in with your <b>@amazon.com</b> email + team code.
               </div>
             </div>
 
@@ -71,14 +81,12 @@ function LoginPage() {
                 <Mail size={14} className="text-slate-500" />
                 Amazon email
               </label>
-
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="jane.doe@amazon.com"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
               />
-
               <div className="mt-2">
                 {email.length > 0 &&
                   (emailOk ? (
@@ -87,6 +95,19 @@ function LoginPage() {
                     <Pill tone="danger">Must end with @amazon.com</Pill>
                   ))}
               </div>
+            </div>
+
+            <div>
+              <label className="mb-1 flex items-center gap-2 text-xs font-extrabold text-slate-700">
+                <UsersRound size={14} className="text-slate-500" />
+                Team code
+              </label>
+              <input
+                value={teamCode}
+                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                placeholder="SBN-OPS"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold tracking-wide text-slate-900 outline-none focus:border-slate-300"
+              />
             </div>
 
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -127,15 +148,12 @@ function LoginPage() {
 
         <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
           <CheckCircle2 size={12} />
-          Mock auth enabled • real verification later
+          Mock teams enabled • real Excel upload later
         </div>
       </div>
     </div>
   );
 }
 
-/** ✅ DEFAULT EXPORT — fixes your error */
 export default LoginPage;
-
-/** Optional named export */
 export { LoginPage };

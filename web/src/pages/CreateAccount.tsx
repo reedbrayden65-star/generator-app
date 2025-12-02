@@ -1,12 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  createAccount,
-  findAccountByEmail,
-  markVerified,
-  signInWithRememberChoice,
-} from "../data/authStore";
-import { getTeamByCode, createTeam } from "../data/teamStore";
+import { signInWithRememberChoice } from "../data/authStore";
 import {
   ArrowLeft,
   ShieldCheck,
@@ -50,34 +44,15 @@ function CreateAccountPage() {
     if (!name.trim()) return setError("Name is required.");
     if (!emailOk) return setError("Must be a valid @amazon.com email.");
     if (!teamCode.trim()) return setError("Team code is required.");
-    if (findAccountByEmail(email)) {
-      return setError("An account already exists for that email.");
-    }
-
-    // ✅ Team code validation
-    const tc = teamCode.trim().toUpperCase();
-    if (!tc) {
-      return setError("Team code is required.");
-    }
-    if (tc.length < 3) {
-      return setError("Team code must be at least 3 characters.");
-    }
-    // Team can be new or existing - both are allowed
 
     setSending(true);
-
     const code = generateMockCode();
-
-    // simulate sending
-    setTimeout(() => {
-      setSending(false);
-      setSentCode(code);
-      setStep("verify"); // ✅ ALWAYS goes to verify step
-      console.log("[MOCK VERIFY CODE]", code);
-    }, 600);
+    setSentCode(code);
+    setStep("verify");
+    setSending(false);
   }
 
-  function handleVerifyAndCreate() {
+  async function handleVerifyAndCreate() {
     setError(null);
 
     if (!sentCode) return setError("No code was sent. Go back and resend.");
@@ -86,21 +61,33 @@ function CreateAccountPage() {
     }
 
     try {
-      const tc = teamCode.trim().toUpperCase();
+      setSending(true);
+      const response = await fetch("http://3.137.44.19:8080/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: name,
+          email: email,
+          password: teamCode,
+        }),
+      });
 
-      // ✅ Create team if it doesn't exist
-      let team = getTeamByCode(tc);
-      if (!team) {
-        team = createTeam(tc, tc);
+      if (!response.ok) {
+        const data = await response.json();
+        return setError(data.error || "Registration failed.");
       }
 
-      const acct = createAccount(name, email, tc);
-      markVerified(acct.id);
-      signInWithRememberChoice(acct.id, true);
+      const data = await response.json();
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user_id", data.user_id);
+      localStorage.setItem("username", data.username);
+      signInWithRememberChoice(data.user_id, true);
 
       setStep("done");
     } catch (e: any) {
       setError(e.message ?? "Failed to create account.");
+    } finally {
+      setSending(false);
     }
   }
 
