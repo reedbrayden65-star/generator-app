@@ -8,7 +8,6 @@ import {
   User2,
   KeyRound,
   CheckCircle2,
-  UsersRound,
   Send,
 } from "lucide-react";
 import { Card, CardHeader, Button, Pill } from "../components/ui";
@@ -17,58 +16,46 @@ function isAmazonEmail(email: string) {
   return /^[a-z0-9._%+-]+@amazon\.com$/i.test(email.trim());
 }
 
-function generateMockCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
 function CreateAccountPage() {
   const nav = useNavigate();
 
-  const [step, setStep] = useState<"form" | "verify" | "done">("form");
+  const [step, setStep] = useState<"form" | "password" | "done">("form");
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [teamCode, setTeamCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [sentCode, setSentCode] = useState<string | null>(null);
-  const [codeInput, setCodeInput] = useState("");
 
   const emailOk = useMemo(() => isAmazonEmail(email), [email]);
 
-  function handleSendCode() {
+  function handleContinue() {
     setError(null);
 
     if (!name.trim()) return setError("Name is required.");
     if (!emailOk) return setError("Must be a valid @amazon.com email.");
-    if (!teamCode.trim()) return setError("Team code is required.");
 
-    setSending(true);
-    const code = generateMockCode();
-    setSentCode(code);
-    setStep("verify");
-    setSending(false);
+    setStep("password");
   }
 
-  async function handleVerifyAndCreate() {
+  async function handleCreateAccount() {
     setError(null);
 
-    if (!sentCode) return setError("No code was sent. Go back and resend.");
-    if (codeInput.trim() !== sentCode) {
-      return setError("Incorrect verification code.");
-    }
+    if (!password.trim()) return setError("Password is required.");
+    if (password.length < 8) return setError("Password must be at least 8 characters.");
+    if (password !== confirmPassword) return setError("Passwords don't match.");
 
     try {
-      setSending(true);
+      setLoading(true);
       const response = await fetch("http://3.137.44.19:8080/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: name,
           email: email,
-          password: teamCode,
+          password: password,
         }),
       });
 
@@ -87,7 +74,7 @@ function CreateAccountPage() {
     } catch (e: any) {
       setError(e.message ?? "Failed to create account.");
     } finally {
-      setSending(false);
+      setLoading(false);
     }
   }
 
@@ -105,7 +92,7 @@ function CreateAccountPage() {
           }
         />
 
-        {/* ---------------- FORM STEP ---------------- */}
+        {/* FORM STEP */}
         {step === "form" && (
           <div className="space-y-4 px-4 pb-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
@@ -114,7 +101,7 @@ function CreateAccountPage() {
                 Amazon-only access
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                Enter your info, then we’ll send you a verification code.
+                Enter your name and Amazon email to get started.
               </div>
             </div>
 
@@ -144,18 +131,6 @@ function CreateAccountPage() {
               </div>
             </Field>
 
-            <Field label="Team code" icon={UsersRound}>
-              <input
-                value={teamCode}
-                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
-                placeholder="SBN-OPS"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold tracking-wide text-slate-900 outline-none focus:border-slate-300"
-              />
-              <div className="mt-2 text-xs text-slate-500">
-                <b>Chief?</b> Enter a new team code to create your team. <b>Employee?</b> Ask your Chief for the team code.
-              </div>
-            </Field>
-
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900">
                 {error}
@@ -163,43 +138,48 @@ function CreateAccountPage() {
             )}
 
             <div className="flex justify-end">
-              <Button onClick={handleSendCode} disabled={sending}>
+              <Button onClick={handleContinue} disabled={!emailOk || !name.trim()}>
                 <Send size={16} />
-                {sending ? "Sending..." : "Send verification code"}
+                Continue
               </Button>
             </div>
           </div>
         )}
 
-        {/* ---------------- VERIFY STEP ---------------- */}
-        {step === "verify" && (
+        {/* PASSWORD STEP */}
+        {step === "password" && (
           <div className="space-y-4 px-4 pb-4">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <div className="flex items-center gap-2 font-extrabold text-slate-900">
                 <KeyRound size={16} />
-                Verify your email
+                Create a password
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                We sent a 6-digit code to <b>{email}</b>.
-                <br />
-                (Mock: open DevTools Console to see it.)
+                Choose a strong password to secure your account.
               </div>
             </div>
 
-            <Field label="Verification code" icon={KeyRound}>
+            <Field label="Password" icon={KeyRound}>
               <input
-                value={codeInput}
-                onChange={(e) =>
-                  setCodeInput(
-                    e.target.value.replace(/[^\d]/g, "").slice(0, 6)
-                  )
-                }
-                placeholder="123456"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-extrabold tracking-widest text-slate-900 outline-none focus:border-slate-300"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
               />
-              <div className="mt-2 text-[11px] text-slate-500">
-                Didn’t get a code? Go back and resend.
+              <div className="mt-2 text-xs text-slate-500">
+                At least 8 characters
               </div>
+            </Field>
+
+            <Field label="Confirm password" icon={KeyRound}>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
+              />
             </Field>
 
             {error && (
@@ -212,14 +192,14 @@ function CreateAccountPage() {
               <Button variant="ghost" onClick={() => setStep("form")}>
                 Back
               </Button>
-              <Button onClick={handleVerifyAndCreate}>
-                Verify & Create Account
+              <Button onClick={handleCreateAccount} disabled={loading}>
+                {loading ? "Creating..." : "Create Account"}
               </Button>
             </div>
           </div>
         )}
 
-        {/* ---------------- DONE STEP ---------------- */}
+        {/* DONE STEP */}
         {step === "done" && (
           <div className="space-y-3 px-4 pb-8 pt-2 text-center">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-600/10 text-emerald-700">
@@ -229,7 +209,7 @@ function CreateAccountPage() {
               Account created
             </div>
             <div className="text-sm text-slate-600">
-              Team: <b>{teamCode.toUpperCase()}</b>
+              Welcome, <b>{name}</b>
             </div>
             <div className="pt-2">
               <Button onClick={() => nav("/upload-brain")}>
@@ -265,5 +245,3 @@ function Field({
 
 export default CreateAccountPage;
 export { CreateAccountPage as CreateAccount };
-
-
