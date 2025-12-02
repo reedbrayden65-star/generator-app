@@ -1,0 +1,14 @@
+BuildingName,GeneratorID,TaskTitle,TaskDescription,TaskType,DueDate,Status,RecurrenceType,RecurrenceInterval
+Building A,GEN-001,Oil Change,Change oil and filter,3Month,2025-03-15,Current,MONTHLY,3
+Building A,GEN-001,Air Filter Replacement,Replace air filter,6Month,2025-06-15,Current,MONTHLY,6
+Building A,GEN-001,Spark Plug Service,Service and replace spark plugs,12Month,2025-12-15,Current,YEARLY,1
+Building A,GEN-002,Oil Change,Change oil and filter,3Month,2025-03-20,Current,MONTHLY,3
+Building A,GEN-002,Coolant Flush,Flush cooling system,12Month,2025-12-20,Current,YEARLY,1
+Building A,GEN-003,Oil Change,Change oil and filter,3Month,2025-03-25,Current,MONTHLY,3
+Building A,GEN-003,Belt Inspection,Inspect drive belts for wear,6Month,2025-06-25,Current,MONTHLY,6
+Building B,GEN-004,Oil Change,Change oil and filter,3Month,2025-03-30,Current,MONTHLY,3
+Building B,GEN-004,Fuel Filter Change,Replace fuel filter,12Month,2025-12-05,Current,YEARLY,1
+Building B,GEN-005,Oil Change,Change oil and filter,3Month,2025-04-05,Current,MONTHLY,3
+Building B,GEN-005,Inspection,General maintenance inspection,Standalone,2025-03-10,Current,,
+Building C,GEN-006,Oil Change,Change oil and filter,3Month,2025-04-10,Current,MONTHLY,3
+Building C,GEN-006,Coolant Check,Check coolant levels,Standalone,2025-03-12,Current,,
