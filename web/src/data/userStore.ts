@@ -38,7 +38,9 @@ function notify() {
 export function subscribeUser(listener: (u: User) => void) {
   listeners.add(listener);
   listener(currentUser);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getCurrentUser() {
