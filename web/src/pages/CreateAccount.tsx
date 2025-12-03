@@ -23,6 +23,7 @@ function CreateAccountPage() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [teamCode, setTeamCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -46,6 +47,7 @@ function CreateAccountPage() {
     if (!password.trim()) return setError("Password is required.");
     if (password.length < 8) return setError("Password must be at least 8 characters.");
     if (password !== confirmPassword) return setError("Passwords don't match.");
+    if (!teamCode.trim()) return setError("Team code is required.");
 
     try {
       setLoading(true);
@@ -56,6 +58,7 @@ function CreateAccountPage() {
           username: name,
           email: email,
           password: password,
+          teamCode: teamCode,
         }),
       });
 
@@ -152,10 +155,10 @@ function CreateAccountPage() {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <div className="flex items-center gap-2 font-extrabold text-slate-900">
                 <KeyRound size={16} />
-                Create a password
+                Create a password & enter team code
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                Choose a strong password to secure your account.
+                Choose a strong password and enter your team code.
               </div>
             </div>
 
@@ -179,6 +182,15 @@ function CreateAccountPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
+              />
+            </Field>
+
+            <Field label="Team code" icon={User2}>
+              <input
+                value={teamCode}
+                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                placeholder="SBN-OPS"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold tracking-wide text-slate-900 outline-none focus:border-slate-300"
               />
             </Field>
 
