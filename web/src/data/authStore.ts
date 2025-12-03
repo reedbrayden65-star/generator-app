@@ -66,7 +66,9 @@ function notify() {
 export function subscribeAuth(listener: (s: AuthState) => void) {
   listeners.add(listener);
   listener(state);
-  return () => listeners.delete(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getAuthState() {
