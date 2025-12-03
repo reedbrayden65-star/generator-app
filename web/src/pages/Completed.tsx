@@ -27,7 +27,9 @@ function CompletedPage() {
   const nav = useNavigate();
 
   const [me, setMe] = useState(getCurrentUser());
-  useEffect(() => subscribeUser(setMe), []);
+  useEffect(() => {
+    return subscribeUser(setMe);
+  }, []);
 
   const isAdmin = isAdminRole(me.role);
 

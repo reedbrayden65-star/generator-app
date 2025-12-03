@@ -65,7 +65,9 @@ export default function GeneratorView() {
 
   const acct = getCurrentAccount();
   const [me, setMe] = useState(getCurrentUser());
-  useEffect(() => subscribeUser(setMe), []);
+  useEffect(() => {
+    return subscribeUser(setMe);
+  }, []);
 
   const [allTasks, setAllTasks] = useState<TaskRow[]>([]);
   useEffect(() => {
@@ -487,7 +489,6 @@ function TaskCard({
   task: TaskRow;
   onComment: (task: TaskRow) => void;
   onAssign: (task: TaskRow) => void;
-  onEscalate: (task: TaskRow) => void;
   onEscalate: (task: TaskRow) => void;
   isAdmin: boolean;
   me: User;

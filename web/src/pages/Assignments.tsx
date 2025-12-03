@@ -17,7 +17,9 @@ import { getCurrentUser, subscribeUser } from "../data/userStore";
 function Assignments() {
   const nav = useNavigate();
   const [me, setMe] = useState(getCurrentUser());
-  useEffect(() => subscribeUser(setMe), []);
+  useEffect(() => {
+    return subscribeUser(setMe);
+  }, []);
 
   const [allTasks, setAllTasks] = useState<TaskRow[]>([]);
   useEffect(() => subscribe(setAllTasks), []);

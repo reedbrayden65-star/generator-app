@@ -33,7 +33,9 @@ function EscalationsPage() {
   const nav = useNavigate();
 
   const [me, setMe] = useState(getCurrentUser());
-  useEffect(() => subscribeUser(setMe), []);
+  useEffect(() => {
+    return subscribeUser(setMe);
+  }, []);
 
   const [allTasks, setAllTasks] = useState<TaskRow[]>([]);
   useEffect(() => subscribe(setAllTasks), []);

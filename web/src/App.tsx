@@ -73,7 +73,9 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 export default function App() {
   // mock role switch for now (still useful)
   const [me, setMe] = useState(getCurrentUser());
-  useEffect(() => subscribeUser(setMe), []);
+  useEffect(() => {
+    return subscribeUser(setMe);
+  }, []);
 
   const devUser = users.find((u) => u.role === "DEVELOPER")!;
   const mockDceo = users.find((u) => u.role === "DCEO")!;
