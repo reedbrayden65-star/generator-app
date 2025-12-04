@@ -107,25 +107,25 @@ function EscalationsPage() {
           <Kpi icon={Siren} label="Escalated Now" value={counts.urgent} color={statusColor("Escalated")} />
           <Kpi icon={AlertTriangle} label="Past Due (All)" value={counts.pastDue} color={statusColor("PastDue")} />
           <Kpi icon={CalendarClock} label="Upcoming (All)" value={counts.upcoming} color={statusColor("Upcoming")} />
-          <Kpi icon={Zap} label="Total Tasks (All)" value={allTasks.filter((t) => t.Status !== "Completed").length} color="#0f172a" />
+          <Kpi icon={Zap} label="Total Tasks (All)" value={allTasks.filter((t: TaskRow) => t.Status !== "Completed").length} color="#3b82f6" />
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 border-t border-slate-700 p-4 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:w-[460px]">
-            <Search className="absolute left-2 top-2.5 text-slate-400" size={16} />
+            <Search className="absolute left-2 top-2.5 text-slate-500" size={16} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search escalations (task, SIM, building, gen, user, reason...)"
-              className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-300"
+              className="w-full rounded-xl border border-slate-600 bg-slate-800 pl-8 pr-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => setShowMineOnly(false)} className={!showMineOnly ? "bg-slate-900 text-white border-slate-900" : ""}>
+            <Button variant="ghost" onClick={() => setShowMineOnly(false)} className={!showMineOnly ? "bg-blue-600 text-white border-blue-600" : ""}>
               All Escalations
             </Button>
-            <Button variant="ghost" onClick={() => setShowMineOnly(true)} className={showMineOnly ? "bg-slate-900 text-white border-slate-900" : ""}>
+            <Button variant="ghost" onClick={() => setShowMineOnly(true)} className={showMineOnly ? "bg-blue-600 text-white border-blue-600" : ""}>
               Mine Only
             </Button>
           </div>
@@ -133,7 +133,7 @@ function EscalationsPage() {
       </Card>
 
       <Card>
-        <div className="border-b border-slate-100 px-4 py-3 text-xs font-extrabold text-slate-600">
+        <div className="border-b border-slate-700 px-4 py-3 text-xs font-extrabold text-slate-400">
           {escalated.length} escalated task{escalated.length !== 1 ? "s" : ""}
         </div>
 
@@ -141,12 +141,12 @@ function EscalationsPage() {
           tasks={escalated}
           me={me}
           isAdmin={isAdmin}
-          onAssign={(t) => setAssignOneFor(t)}
-          onComment={(t) => setOpenCommentsFor(t)}
+          onAssign={(t: TaskRow) => setAssignOneFor(t)}
+          onComment={(t: TaskRow) => setOpenCommentsFor(t)}
         />
 
         {escalated.length === 0 && (
-          <div className="p-10 text-center text-sm text-slate-500">
+          <div className="p-10 text-center text-sm text-slate-400">
             No escalated tasks right now.
           </div>
         )}
@@ -155,8 +155,8 @@ function EscalationsPage() {
       {/* Assign modal */}
       {assignOneFor && (
         <Modal onClose={() => setAssignOneFor(null)}>
-          <div className="text-lg font-extrabold text-slate-900">Assign Escalation</div>
-          <div className="text-sm text-slate-500">{assignOneFor.TaskTitle}</div>
+          <div className="text-lg font-extrabold text-white">Assign Escalation</div>
+          <div className="text-sm text-slate-400">{assignOneFor.TaskTitle}</div>
 
           <div className="mt-4 grid gap-2">
             {assignees.map((u) => (
@@ -166,15 +166,15 @@ function EscalationsPage() {
                   assignTask(assignOneFor.TaskID, u, me);
                   setAssignOneFor(null);
                 }}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                className="flex items-center justify-between rounded-xl border border-slate-600 bg-slate-700 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-600"
               >
                 <div className="flex items-center gap-2">
-                  <div className="grid h-7 w-7 place-items-center rounded-full bg-slate-900 text-[11px] font-extrabold text-white">
+                  <div className="grid h-7 w-7 place-items-center rounded-full bg-blue-600 text-[11px] font-extrabold text-white">
                     {u.name.split(" ").map(s => s[0]).slice(0,2).join("")}
                   </div>
                   <div>
                     <div className="font-extrabold">{u.name}</div>
-                    <div className="text-[11px] text-slate-500">{u.role}</div>
+                    <div className="text-[11px] text-slate-400">{u.role}</div>
                   </div>
                 </div>
 
@@ -194,23 +194,23 @@ function EscalationsPage() {
       {/* Comments modal */}
       {openCommentsFor && (
         <Modal onClose={() => setOpenCommentsFor(null)}>
-          <div className="text-lg font-extrabold text-slate-900">Comments</div>
-          <div className="text-sm text-slate-500">{openCommentsFor.TaskTitle}</div>
+          <div className="text-lg font-extrabold text-white">Comments</div>
+          <div className="text-sm text-slate-400">{openCommentsFor.TaskTitle}</div>
 
           <div className="mt-3 max-h-64 space-y-2 overflow-auto">
             {getComments(openCommentsFor).length === 0 && (
-              <div className="text-sm text-slate-500">No comments yet.</div>
+              <div className="text-sm text-slate-400">No comments yet.</div>
             )}
 
-            {getComments(openCommentsFor).map((c, i) => (
-              <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <div className="text-xs font-bold text-slate-700">
+            {getComments(openCommentsFor).map((c: any, i: number) => (
+              <div key={i} className="rounded-xl border border-slate-600 bg-slate-700 p-3">
+                <div className="text-xs font-bold text-slate-300">
                   {c.userName}
-                  <span className="ml-2 font-medium text-slate-400">
+                  <span className="ml-2 font-medium text-slate-500">
                     {new Date(c.ts).toLocaleString()}
                   </span>
                 </div>
-                <div className="mt-1 text-sm text-slate-900">{c.comment}</div>
+                <div className="mt-1 text-sm text-white">{c.comment}</div>
               </div>
             ))}
           </div>
@@ -264,7 +264,7 @@ function VirtualEscalationList({ tasks, me, isAdmin, onAssign, onComment }: any)
     <div
       ref={scrollerRef}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      className="max-h-[72vh] overflow-auto bg-white"
+      className="max-h-[72vh] overflow-auto bg-slate-800"
     >
       <div style={{ height: topSpacer }} />
       {visible.map((t: TaskRow) => (
@@ -289,41 +289,41 @@ function EscalationCard({ task: t, me, isAdmin, onAssign, onComment }: any) {
 
   return (
     <div className="px-3 py-2 md:px-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md">
+      <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 shadow-lg transition hover:scale-[1.01] hover:shadow-xl">
         <div className="flex items-start gap-3">
           <div className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: dot }} />
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="truncate text-sm font-extrabold text-slate-900">{t.TaskTitle}</div>
+              <div className="truncate text-sm font-extrabold text-white">{t.TaskTitle}</div>
               <Pill tone="danger" className="text-[10px]">ESCALATED</Pill>
               <Pill className="text-[10px]">{t.TaskType}</Pill>
               {t.SIMTicketNumber && <Pill className="text-[10px]">SIM {t.SIMTicketNumber}</Pill>}
             </div>
 
             {reason && (
-              <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-2 text-[12px] font-semibold text-red-900">
+              <div className="mt-2 rounded-xl border border-red-900 bg-red-950 p-2 text-[12px] font-semibold text-red-200">
                 Reason: {reason}
                 {escalatedBy && (
-                  <span className="ml-2 text-[11px] font-bold text-red-700">• by {escalatedBy}</span>
+                  <span className="ml-2 text-[11px] font-bold text-red-400">• by {escalatedBy}</span>
                 )}
               </div>
             )}
 
-            <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-700">
-              <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
-                <Building2 size={12} className="text-slate-500" />
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-300">
+              <div className="inline-flex items-center gap-1 rounded-full bg-slate-700/50 px-2 py-1">
+                <Building2 size={12} className="text-slate-400" />
                 {t.BuildingName}
               </div>
-              <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
-                <Zap size={12} className="text-slate-500" />
+              <div className="inline-flex items-center gap-1 rounded-full bg-slate-700/50 px-2 py-1">
+                <Zap size={12} className="text-slate-400" />
                 {t.GeneratorID}
               </div>
-              <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
-                <CalendarClock size={12} className="text-slate-500" />
+              <div className="inline-flex items-center gap-1 rounded-full bg-slate-700/50 px-2 py-1">
+                <CalendarClock size={12} className="text-slate-400" />
                 Due {new Date(t.DueDate).toLocaleDateString()}
               </div>
-              <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
+              <div className="inline-flex items-center gap-1 rounded-full bg-slate-700/50 px-2 py-1">
                 Assigned: {t.AssignedToUserName ?? "—"}
               </div>
             </div>
@@ -339,7 +339,7 @@ function EscalationCard({ task: t, me, isAdmin, onAssign, onComment }: any) {
           </Button>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-700 pt-3">
           <Action onClick={() => onComment(t)} icon={MessageSquare} label="Comment" />
           {isAdmin && hasPermission(me.role, "TASK_ASSIGN") && (
             <Action onClick={() => onAssign(t)} icon={UserPlus2} label="Reassign" tone="admin" />
@@ -358,14 +358,14 @@ function EscalationCard({ task: t, me, isAdmin, onAssign, onComment }: any) {
 
 function Kpi({ icon: Icon, label, value, color }: any) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+    <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 shadow-lg">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">
         <Icon size={14} />
         {label}
       </div>
       <div className="mt-1 flex items-center gap-2">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-        <span className="text-xl font-extrabold text-slate-900">{value}</span>
+        <span className="text-xl font-extrabold text-white">{value}</span>
       </div>
     </div>
   );
@@ -375,10 +375,10 @@ function Action({ onClick, icon: Icon, label, tone }: any) {
   const base = "inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-extrabold transition active:translate-y-[1px]";
   const palette =
     tone === "admin"
-      ? "border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+      ? "border-indigo-900 bg-indigo-950 text-indigo-300 hover:bg-indigo-900"
       : tone === "success"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-      : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
+      ? "border-emerald-900 bg-emerald-950 text-emerald-300 hover:bg-emerald-900"
+      : "border-slate-600 bg-slate-700 text-slate-200 hover:bg-slate-600";
   return (
     <button onClick={onClick} className={`${base} ${palette}`}>
       <Icon size={14} />
@@ -389,8 +389,8 @@ function Action({ onClick, icon: Icon, label, tone }: any) {
 
 function Modal({ children, onClose }: any) {
   return (
-    <div onClick={onClose} className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.18)]">
+    <div onClick={onClose} className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm">
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-xl rounded-2xl bg-slate-800 border border-slate-700 p-4 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
         {children}
       </div>
     </div>

@@ -9,6 +9,7 @@ import {
   getTeamTasks,
 } from "../data/teamStore";
 import { resetToMockTasks, addTasks } from "../data/taskStore";
+import { computeStatus } from "../utils/status";
 import {
   UploadCloud,
   Building2,
@@ -72,7 +73,7 @@ function UploadBrainMockPage() {
         }
 
         // Parse CSV with proper quote handling
-        const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase());
+        const headers = parseCSVLine(lines[0]).map((h) => h.toLowerCase().replace(/_/g, ""));
         const tasks: any[] = [];
         const taskIdSet = new Set<string>();
 
@@ -85,41 +86,59 @@ function UploadBrainMockPage() {
             row[h] = values[idx] || "";
           });
 
-          // Generate unique task ID
-          let taskId = `${acct.teamCode}-${i}`;
-          let counter = 1;
-          while (taskIdSet.has(taskId)) {
-            taskId = `${acct.teamCode}-${i}-${counter}`;
-            counter++;
+          // Handle new format: Campus, Building, UnitNumber, 3M_PM, 6M_PM, 12M_PM
+          const campus = row.campus || "SBN";
+          const building = row.building || row.buildingname || "Unknown";
+          const unitNumber = row.unitnumber || row.generatorid || "Gen 1";
+          
+          // Create tasks for each PM type if dates exist
+          const pmTypes = [
+            { type: "3M_PM", date: row["3mpm"], window: row["3mcompliancewindow"] || 30 },
+            { type: "6M_PM", date: row["6mpm"], window: row["6mcompliancewindow"] || 45 },
+            { type: "12M_PM", date: row["12mpm"], window: row["12mcompliancewindow"] || 60 },
+          ];
+
+          for (const pm of pmTypes) {
+            if (!pm.date) continue;
+
+            let taskId = `${acct.teamCode}-${building}-${unitNumber}-${pm.type}-${i}`;
+            let counter = 1;
+            while (taskIdSet.has(taskId)) {
+              taskId = `${acct.teamCode}-${building}-${unitNumber}-${pm.type}-${i}-${counter}`;
+              counter++;
+            }
+            taskIdSet.add(taskId);
+
+            // Parse date and compute status
+            const parsedDate = new Date(pm.date);
+            const isoDate = parsedDate.toISOString().split("T")[0];
+            const status = computeStatus(isoDate, parseInt(pm.window) || 30);
+
+            tasks.push({
+              TaskID: taskId,
+              BuildingName: `${campus}-${building}`,
+              BuildingID: `${campus}-${building}`,
+              GeneratorID: unitNumber,
+              GeneratorName: unitNumber,
+              TaskTitle: `${pm.type.replace("_", " ")} - ${unitNumber}`,
+              TaskDescription: `Preventive maintenance for ${unitNumber} in Building ${building}`,
+              TaskType: pm.type,
+              DueDate: isoDate,
+              ComplianceWindow: pm.window,
+              Status: status,
+              AssignedToUserID: null,
+              AssignedToUserName: null,
+              ClaimedByUserID: null,
+              ClaimedByUserName: null,
+              SIMTicketNumber: null,
+              SIMTicketLink: null,
+              CommentsJSON: null,
+              RecurrenceType: pm.type === "3M_PM" ? "MONTHLY" : pm.type === "6M_PM" ? "MONTHLY" : "YEARLY",
+              RecurrenceInterval: pm.type === "3M_PM" ? 3 : pm.type === "6M_PM" ? 6 : 12,
+              RecurrenceEndDate: null,
+              TeamCode: acct.teamCode,
+            });
           }
-          taskIdSet.add(taskId);
-
-          const buildingName = row.buildingname || row.building || "Unknown";
-          const generatorId = row.generatorid || row.generator || "GEN-" + i;
-
-          tasks.push({
-            TaskID: taskId,
-            BuildingName: buildingName,
-            BuildingID: buildingName, // Use building name as ID
-            GeneratorID: generatorId,
-            GeneratorName: generatorId,
-            TaskTitle: row.tasktitle || row.title || "Task",
-            TaskDescription: row.taskdescription || row.description || "",
-            TaskType: row.tasktype || row.type || "Maintenance",
-            DueDate: row.duedate || row.due || new Date().toISOString().split("T")[0],
-            Status: row.status || "Current",
-            AssignedToUserID: null,
-            AssignedToUserName: null,
-            ClaimedByUserID: null,
-            ClaimedByUserName: null,
-            SIMTicketNumber: row.simticketnumber || row.sim || null,
-            SIMTicketLink: row.simticketlink || null,
-            CommentsJSON: null,
-            RecurrenceType: row.recurrencetype || null,
-            RecurrenceInterval: row.recurrenceinterval ? parseInt(row.recurrenceinterval) : null,
-            RecurrenceEndDate: row.recurrenceenddate || null,
-            TeamCode: acct.teamCode,
-          });
         }
 
         if (tasks.length === 0) {
@@ -127,12 +146,14 @@ function UploadBrainMockPage() {
           return;
         }
 
-        // Save tasks to team storage (shared across all team members)
-        const existingTasks = getTeamTasks(acct.teamCode) || [];
-        const allTasks = [...existingTasks, ...tasks];
-        saveTeamTasks(acct.teamCode, allTasks);
+        // Debug: log a sample task status
+        console.log("Sample task:", tasks[0]?.TaskTitle, tasks[0]?.DueDate, tasks[0]?.Status);
 
-        // Also add to global store for real-time updates
+        // Replace all tasks (don't append)
+        saveTeamTasks(acct.teamCode, tasks);
+
+        // Clear global store and add new tasks
+        resetToMockTasks();
         await addTasks(tasks);
 
         // Mark team as uploaded
@@ -141,8 +162,8 @@ function UploadBrainMockPage() {
         setTeam(getTeamByCode(acct.teamCode));
         
         // Log for debugging
-        console.log("Tasks saved:", allTasks.length, "tasks");
-        console.log("Sample task:", allTasks[0]);
+        console.log("Tasks saved:", tasks.length, "tasks");
+        console.log("Sample task:", tasks[0]);
         
         setErr(null);
       } catch (e: any) {
@@ -237,83 +258,56 @@ function UploadBrainMockPage() {
         />
 
         <div className="space-y-4 px-4 pb-5">
-          {!brainUploaded && (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-center gap-2 text-lg font-extrabold text-slate-900">
-                <Sparkles size={18} />
-                Your team is empty right now
-              </div>
-              <div className="mt-1 text-sm text-slate-600">
-                Upload your Excel brain to generate buildings, generators, and tasks.
-                <br />
-                (Mock mode: click the button below to load a sample brain.)
-              </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <Stat icon={Building2} label="Buildings" value="0" />
-                <Stat icon={Zap} label="Generators" value="0" />
-                <Stat icon={ClipboardList} label="Tasks" value="0" />
-              </div>
-
-              {err && (
-                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-900">
-                  {err}
-                </div>
-              )}
-
-              <div className="mt-5 space-y-3">
-                <div>
-                  <label className="mb-2 block text-xs font-extrabold text-slate-700">
-                    Upload CSV or Excel file
-                  </label>
-                  <input
-                    type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => handleFileUpload(e.target.files?.[0])}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-slate-300"
-                  />
-                  <div className="mt-1 text-[11px] text-slate-500">
-                    Expected columns: BuildingName, GeneratorID, TaskTitle, TaskDescription, TaskType, DueDate, Status
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 md:flex-row">
-                  <Button onClick={loadSampleBrain} variant="ghost" className="flex-1">
-                    <UploadCloud size={16} />
-                    Load Sample Brain (Demo)
-                  </Button>
-                  <Button variant="ghost" onClick={() => nav("/")}>
-                    Skip for now
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {brainUploaded && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 mb-4">
               <div className="flex items-center gap-2 text-lg font-extrabold text-emerald-900">
-                ✅ Brain uploaded
+                ✅ Data uploaded
               </div>
               <div className="mt-1 text-sm text-emerald-800">
-                Your dashboard is now populated.
-                <br />
-                (In real mode this will come from your Excel file.)
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Pill tone="success">7 Buildings</Pill>
-                <Pill tone="success">27 Generators / building</Pill>
-                <Pill tone="success">Sample Tasks Loaded</Pill>
-              </div>
-
-              <div className="mt-4">
-                <Button onClick={() => nav("/")}>
-                  Go to Dashboard <ArrowRight size={16} />
-                </Button>
+                Your dashboard is populated. Upload again to replace data.
               </div>
             </div>
           )}
+
+          {/* Always show upload option */}
+          <div className="rounded-2xl border border-slate-700 bg-slate-800 p-5">
+            <div className="flex items-center gap-2 text-lg font-extrabold text-white">
+              <UploadCloud size={18} />
+              Upload Generator Data
+            </div>
+            <div className="mt-1 text-sm text-slate-400">
+              Upload your CSV file with generator PM schedules.
+            </div>
+
+            {err && (
+              <div className="mt-3 rounded-xl border border-red-900 bg-red-950 px-3 py-2 text-sm font-semibold text-red-200">
+                {err}
+              </div>
+            )}
+
+            <div className="mt-4">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => handleFileUpload(e.target.files?.[0])}
+                className="w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm font-semibold text-white outline-none focus:border-blue-500 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-1 file:text-sm file:font-semibold file:text-white hover:file:bg-blue-500"
+              />
+              <div className="mt-2 text-[11px] text-slate-500">
+                Expected: Campus, Building, UnitNumber, 3M_PM, 3M_ComplianceWindow, 6M_PM, 6M_ComplianceWindow, 12M_PM, 12M_ComplianceWindow
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button onClick={loadSampleBrain} variant="ghost">
+                Load Sample Data
+              </Button>
+              <Button onClick={() => nav("/buildings")}>
+                View Buildings
+              </Button>
+            </div>
+          </div>
         </div>
       </Card>
     </div>

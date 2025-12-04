@@ -1,641 +1,559 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { TaskRow } from "../data/mockTasks";
-import {
-  subscribe,
-  claimTask,
-  unclaimTask,
-  completeTask,
-  escalateTask,
-  addComment,
-  assignTask,
-  massAssign,
-} from "../data/taskStore";
-import { getTeamTasks } from "../data/teamStore";
-import { getCurrentAccount } from "../data/authStore";
-import { statusColor } from "../utils/status";
 import {
   ArrowLeft,
+  AlertTriangle,
+  Info,
+  Calendar,
+  UserPlus,
+  Flag,
+  CheckCircle2,
   MessageSquare,
   Hand,
-  HandMetal,
-  CheckCircle2,
-  Siren,
-  UserPlus2,
-  Users2,
-  Search,
-  Filter,
-  CalendarClock,
-  IdCard,
-  BadgeAlert,
 } from "lucide-react";
 import { Card, CardHeader, Button, Pill } from "../components/ui";
-import { users, type User } from "../data/users";
-import { hasPermission, isAdminRole } from "../utils/permissions";
-import { getCurrentUser, subscribeUser } from "../data/userStore";
-
-const ROW_HEIGHT = 140;
-const OVERSCAN = 8;
-
-type StatusFilter =
-  | "All"
-  | "Current"
-  | "Upcoming"
-  | "PastDue"
-  | "Urgent"
-  | "Escalated"
-  | "Unassigned"
-  | "Mine";
+import {
+  getGenerator,
+  getWorkOrdersByGenerator,
+  subscribe,
+  claimWorkOrder,
+  unclaimWorkOrder,
+  assignWorkOrder,
+  escalateWorkOrder,
+  completeWorkOrder,
+  addWorkOrderComment,
+} from "../data/dataStore";
+import { getCurrentUser } from "../data/authStore";
+import type { Generator, WorkOrder } from "../data/types";
+import { computeWOStatus, parsePriority, getPriorityLabel } from "../data/types";
 
 export default function GeneratorView() {
-  const { generatorId } = useParams();
+  const { buildingId, generatorId } = useParams();
   const nav = useNavigate();
+  const buildingName = decodeURIComponent(buildingId || "");
+  const assetId = decodeURIComponent(generatorId || "");
 
-  // Parse URL: format is "buildingName|||generatorId" (using ||| as separator)
-  const lastSeparatorIndex = (generatorId ?? "").lastIndexOf("|||");
-  let buildingId = "";
-  let genId = "";
-  
-  if (lastSeparatorIndex > -1) {
-    buildingId = decodeURIComponent((generatorId ?? "").substring(0, lastSeparatorIndex));
-    genId = decodeURIComponent((generatorId ?? "").substring(lastSeparatorIndex + 3));
+  const [generator, setGenerator] = useState<Generator | undefined>();
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [showAssignModal, setShowAssignModal] = useState<string | null>(null);
+  const [showEscalateModal, setShowEscalateModal] = useState<string | null>(null);
+  const [showCommentModal, setShowCommentModal] = useState<string | null>(null);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const currentUser = getCurrentUser();
+
+  useEffect(() => {
+    const update = () => {
+      setGenerator(getGenerator(assetId));
+      setWorkOrders(getWorkOrdersByGenerator(assetId));
+    };
+    update();
+    return subscribe(update);
+  }, [assetId]);
+
+  const handleClaim = (woNumber: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!currentUser) return;
+    claimWorkOrder(woNumber, currentUser.id, currentUser.name);
+  };
+
+  const handleUnclaim = (woNumber: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    unclaimWorkOrder(woNumber);
+  };
+
+  const handleComplete = (woNumber: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm("Mark this work order as completed?")) {
+      completeWorkOrder(woNumber);
+    }
+  };
+
+  if (!generator) {
+    return (
+      <Card>
+        <div className="p-8 text-center text-slate-400">
+          Generator not found: {assetId}
+        </div>
+      </Card>
+    );
   }
-  
-  console.log(`URL parsing: generatorId="${generatorId}" -> buildingId="${buildingId}" genId="${genId}"`);
 
-  const acct = getCurrentAccount();
-  const [me, setMe] = useState(getCurrentUser());
-  useEffect(() => {
-    return subscribeUser(setMe);
-  }, []);
-
-  const [allTasks, setAllTasks] = useState<TaskRow[]>([]);
-  useEffect(() => {
-    if (!acct?.teamCode) return;
-    
-    // Load team tasks
-    const teamTasks = getTeamTasks(acct.teamCode);
-    setAllTasks(teamTasks);
-
-    // Subscribe to changes
-    const unsub = subscribe(() => {
-      const updated = getTeamTasks(acct.teamCode);
-      setAllTasks(updated);
-    });
-
-    return unsub;
-  }, [acct]);
-
-  // ✅ Base queue EXCLUDES escalated tasks
-  const baseQueueTasks = useMemo(
-    () => {
-      const filtered = allTasks.filter(
-        (t) =>
-          t.BuildingID === buildingId &&
-          t.GeneratorID === genId &&
-          t.Status !== "Completed" &&
-          t.Status !== "Escalated"
-      );
-      console.log(`GeneratorView: Looking for buildingId="${buildingId}" genId="${genId}"`);
-      console.log(`Total tasks: ${allTasks.length}, Filtered: ${filtered.length}`);
-      if (allTasks.length > 0) {
-        console.log(`First task: BuildingID="${allTasks[0].BuildingID}" GeneratorID="${allTasks[0].GeneratorID}"`);
-      }
-      return filtered;
-    },
-    [allTasks, buildingId, genId]
-  );
-
-  // ✅ Escalated tasks for this generator
-  const escalatedTasks = useMemo(
-    () =>
-      allTasks.filter(
-        (t) =>
-          t.BuildingID === buildingId &&
-          t.GeneratorID === genId &&
-          t.Status === "Escalated"
-      ),
-    [allTasks, buildingId, genId]
-  );
-
-  const isAdmin = isAdminRole(me.role);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
-
-  const filteredTasks = useMemo(() => {
-    // ✅ If filter Escalated, show escalated only
-    let t =
-      statusFilter === "Escalated"
-        ? escalatedTasks
-        : baseQueueTasks;
-
-    if (statusFilter === "Mine") {
-      t = t.filter((x) => x.AssignedToUserID === me.id);
-    } else if (statusFilter === "Unassigned") {
-      t = t.filter((x) => !x.AssignedToUserID);
-    } else if (
-      statusFilter !== "All" &&
-      statusFilter !== "Escalated"
-    ) {
-      t = t.filter((x) => x.Status === statusFilter);
-    }
-
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      t = t.filter(
-        (x) =>
-          x.TaskTitle.toLowerCase().includes(q) ||
-          (x.TaskDescription ?? "").toLowerCase().includes(q) ||
-          (x.SIMTicketNumber ?? "").toLowerCase().includes(q) ||
-          x.TaskType.toLowerCase().includes(q)
-      );
-    }
-
-    const rank = (s?: string) =>
-      s === "Urgent" ? 0 :
-      s === "PastDue" ? 1 :
-      s === "Upcoming" ? 2 :
-      3;
-
-    return [...t].sort((a, b) => {
-      const r = rank(a.Status) - rank(b.Status);
-      if (r !== 0) return r;
-      return new Date(a.DueDate).getTime() - new Date(b.DueDate).getTime();
-    });
-  }, [baseQueueTasks, escalatedTasks, statusFilter, query, me.id]);
-
-  const [openCommentsFor, setOpenCommentsFor] = useState<TaskRow | null>(null);
-  const [assignOneFor, setAssignOneFor] = useState<TaskRow | null>(null);
-  const [massAssignOpen, setMassAssignOpen] = useState(false);
-
-  // ✅ Escalate modal state
-  const [escalateFor, setEscalateFor] = useState<TaskRow | null>(null);
-  const [escalateReason, setEscalateReason] = useState("");
-
-  const assignees = users.filter((u) => u.role === "DCEO" || isAdminRole(u.role));
+  const stats = {
+    open: workOrders.filter((wo) => wo.status === "Open").length,
+    onHold: workOrders.filter((wo) => wo.status === "On Hold").length,
+    overdue: workOrders.filter((wo) => computeWOStatus(wo) === "Overdue").length,
+    completed: workOrders.filter((wo) => wo.status === "Completed").length,
+  };
 
   return (
-    <Card>
-      <CardHeader
-        title={`Generator ${genId}`}
-        subtitle={`Building ${buildingId} • Active queue (${baseQueueTasks.length}) • Escalated (${escalatedTasks.length})`}
-        right={
-          <div className="flex items-center gap-2">
-            {isAdmin && hasPermission(me.role, "TASK_MASS_ASSIGN") && statusFilter !== "Escalated" && (
-              <Button onClick={() => setMassAssignOpen(true)} variant="ghost">
-                <Users2 size={16} />
-                Mass Assign
+    <div className="space-y-5">
+      {/* Header */}
+      <Card>
+        <CardHeader
+          title={generator.unitNumber}
+          subtitle={`${buildingName} • Asset ID: ${generator.assetId}`}
+          right={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="primary"
+                onClick={() => setShowInfoModal(true)}
+              >
+                <Info size={14} /> Full Info
               </Button>
-            )}
-            <Button onClick={() => nav(`/buildings/${buildingId}`)} variant="ghost">
-              <ArrowLeft size={16} /> Back
-            </Button>
-          </div>
-        }
-      />
+              <Button
+                variant="ghost"
+                onClick={() => nav(`/buildings/${encodeURIComponent(buildingName)}`)}
+              >
+                <ArrowLeft size={16} /> Back
+              </Button>
+            </div>
+          }
+        />
 
-      {/* Search + Filters */}
-      <div className="flex flex-col gap-3 border-b border-slate-100 bg-white px-4 py-3 md:flex-row md:items-center md:justify-between">
-        <div className="relative w-full md:w-[420px]">
-          <Search className="absolute left-2 top-2.5 text-slate-400" size={16} />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search tasks, SIM, type..."
-            className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-300"
-          />
+        {/* Generator Info */}
+        <div className="p-4 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <InfoItem label="Manufacturer" value={generator.manufacturer || "—"} />
+          <InfoItem label="Model" value={generator.model || "—"} />
+          <InfoItem label="Serial" value={generator.serial || "—"} />
+          <InfoItem label="Size" value={generator.sizeKW ? `${generator.sizeKW} KW` : "—"} />
+          <InfoItem label="Run Hours" value={generator.runHours || "—"} />
+          <InfoItem label="Fuel Level" value={generator.fuelLevelPercent ? `${generator.fuelLevelPercent}%` : "—"} />
+          <InfoItem label="PFHO Status" value={generator.pfhoStatus || "—"} />
+          <InfoItem label="FSB Status" value={generator.fsbStatus || "—"} />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Filter size={14} className="text-slate-400" />
-          <Chip label="All" active={statusFilter === "All"} onClick={() => setStatusFilter("All")} />
-          <Chip label="Mine" active={statusFilter === "Mine"} onClick={() => setStatusFilter("Mine")} />
-          <Chip label="Unassigned" active={statusFilter === "Unassigned"} onClick={() => setStatusFilter("Unassigned")} />
-          <Chip label="Upcoming" color={statusColor("Upcoming")} active={statusFilter === "Upcoming"} onClick={() => setStatusFilter("Upcoming")} />
-          <Chip label="PastDue" color={statusColor("PastDue")} active={statusFilter === "PastDue"} onClick={() => setStatusFilter("PastDue")} />
-          <Chip label="Urgent" color={statusColor("Urgent")} active={statusFilter === "Urgent"} onClick={() => setStatusFilter("Urgent")} />
-          {/* ✅ Escalated is now a separate queue */}
-          <Chip label="Escalated" color={statusColor("Escalated")} active={statusFilter === "Escalated"} onClick={() => setStatusFilter("Escalated")} />
-        </div>
-      </div>
-
-      {/* Desktop header */}
-      <div className="hidden md:grid min-w-0 grid-cols-[16px_1.9fr_170px_160px_160px_1fr] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-[11px] font-extrabold text-slate-700 sticky top-0 z-10">
-        <div />
-        <div>Task</div>
-        <div>Due / Type</div>
-        <div>Assigned</div>
-        <div>Claimed</div>
-        <div>Actions</div>
-      </div>
-
-      <VirtualTaskList
-        tasks={filteredTasks}
-        onComment={(t) => setOpenCommentsFor(t)}
-        onAssign={(t) => setAssignOneFor(t)}
-        onEscalate={(t) => {
-          setEscalateFor(t);
-          setEscalateReason("");
-        }}
-        isAdmin={isAdmin && hasPermission(me.role, "TASK_ASSIGN")}
-        me={me}
-        showEscalate={statusFilter !== "Escalated"}
-      />
-
-      {/* ✅ Escalate Reason Modal */}
-      {escalateFor && (
-        <Modal onClose={() => setEscalateFor(null)}>
-          <div className="text-lg font-extrabold text-slate-900">
-            Escalate Task
-          </div>
-          <div className="text-sm text-slate-500">
-            {escalateFor.TaskTitle}
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <label className="text-xs font-extrabold text-slate-700">
-              Reason (required)
-            </label>
-            <textarea
-              value={escalateReason}
-              onChange={(e) => setEscalateReason(e.target.value)}
-              placeholder="Why are you escalating? Be specific."
-              className="min-h-[110px] w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-800 outline-none focus:border-slate-300"
-            />
-          </div>
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setEscalateFor(null)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (!escalateReason.trim()) return;
-                escalateTask(escalateFor.TaskID, escalateReason, me);
-                setEscalateFor(null);
-              }}
-            >
-              Confirm Escalation
-            </Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Comments modal */}
-      {openCommentsFor && (
-        <Modal onClose={() => setOpenCommentsFor(null)}>
-          <div className="text-lg font-extrabold text-slate-900">Comments</div>
-          <div className="text-sm text-slate-500">{openCommentsFor.TaskTitle}</div>
-
-          <div className="mt-3 max-h-64 space-y-2 overflow-auto">
-            {getComments(openCommentsFor).length === 0 && (
-              <div className="text-sm text-slate-500">No comments yet.</div>
-            )}
-
-            {getComments(openCommentsFor).map((c, i) => (
-              <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <div className="text-xs font-bold text-slate-700">
-                  {c.userName}
-                  <span className="ml-2 font-medium text-slate-400">
-                    {new Date(c.ts).toLocaleString()}
-                  </span>
+        {/* PM Schedule */}
+        {(generator.pm3M || generator.pm6M || generator.pm12M) && (
+          <div className="border-t border-slate-700 p-4">
+            <div className="text-xs font-bold text-slate-400 mb-3 flex items-center gap-2">
+              <Calendar size={14} />
+              PM Schedule
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {generator.pm3M && (
+                <div className="rounded-xl bg-slate-800/50 p-3">
+                  <div className="text-xs text-slate-400">3 Month PM</div>
+                  <div className="font-bold text-white">{generator.pm3M}</div>
                 </div>
-                <div className="mt-1 text-sm text-slate-900">{c.comment}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 flex gap-2">
-            <Button
-              onClick={() => {
-                const text = prompt("Add comment:");
-                if (text) addComment(openCommentsFor.TaskID, text, me);
-                setOpenCommentsFor({ ...openCommentsFor });
-              }}
-            >
-              Add Comment
-            </Button>
-            <Button onClick={() => setOpenCommentsFor(null)}>Close</Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Assign ONE modal */}
-      {assignOneFor && (
-        <Modal onClose={() => setAssignOneFor(null)}>
-          <div className="text-lg font-extrabold text-slate-900">Assign Task</div>
-          <div className="text-sm text-slate-500">{assignOneFor.TaskTitle}</div>
-
-          <div className="mt-4 grid gap-2">
-            {assignees.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => {
-                  assignTask(assignOneFor.TaskID, u, me);
-                  setAssignOneFor(null);
-                }}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="grid h-7 w-7 place-items-center rounded-full bg-slate-900 text-[11px] font-extrabold text-white">
-                    {u.name.split(" ").map(s => s[0]).slice(0,2).join("")}
-                  </div>
-                  <div>
-                    <div className="font-extrabold">{u.name}</div>
-                    <div className="text-[11px] text-slate-500">{u.role}</div>
-                  </div>
+              )}
+              {generator.pm6M && (
+                <div className="rounded-xl bg-slate-800/50 p-3">
+                  <div className="text-xs text-slate-400">6 Month PM</div>
+                  <div className="font-bold text-white">{generator.pm6M}</div>
                 </div>
-
-                {assignOneFor.AssignedToUserID === u.id && (
-                  <Pill tone="success">Assigned</Pill>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <Button onClick={() => setAssignOneFor(null)} variant="ghost">Cancel</Button>
-          </div>
-        </Modal>
-      )}
-
-      {/* Mass Assign modal */}
-      {massAssignOpen && (
-        <Modal onClose={() => setMassAssignOpen(false)}>
-          <div className="text-lg font-extrabold text-slate-900">Mass Assign Visible Tasks</div>
-          <div className="text-sm text-slate-500">
-            You are assigning <b>{filteredTasks.length}</b> tasks matching your filters.
-          </div>
-
-          <div className="mt-4 grid gap-2">
-            {assignees.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => {
-                  const ids = new Set(filteredTasks.map(t => t.TaskID));
-                  massAssign((t) => ids.has(t.TaskID), u, me);
-                  setMassAssignOpen(false);
-                }}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="grid h-7 w-7 place-items-center rounded-full bg-slate-900 text-[11px] font-extrabold text-white">
-                    {u.name.split(" ").map(s => s[0]).slice(0,2).join("")}
-                  </div>
-                  <div>
-                    <div className="font-extrabold">{u.name}</div>
-                    <div className="text-[11px] text-slate-500">{u.role}</div>
-                  </div>
+              )}
+              {generator.pm12M && (
+                <div className="rounded-xl bg-slate-800/50 p-3">
+                  <div className="text-xs text-slate-400">12 Month PM</div>
+                  <div className="font-bold text-white">{generator.pm12M}</div>
                 </div>
-
-                <UserPlus2 size={16} className="text-slate-500" />
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <Button onClick={() => setMassAssignOpen(false)} variant="ghost">Cancel</Button>
-          </div>
-        </Modal>
-      )}
-    </Card>
-  );
-}
-
-/* ---------------- Virtualized List (spacer-based) ---------------- */
-
-function VirtualTaskList({
-  tasks,
-  onComment,
-  onAssign,
-  onEscalate,
-  isAdmin,
-  me,
-  showEscalate,
-}: {
-  tasks: TaskRow[];
-  onComment: (task: TaskRow) => void;
-  onAssign: (task: TaskRow) => void;
-  onEscalate: (task: TaskRow) => void;
-  isAdmin: boolean;
-  me: User;
-  showEscalate: boolean;
-}) {
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportH, setViewportH] = useState(520);
-
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const measure = () => setViewportH(el.clientHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const endIndex = Math.min(
-    tasks.length,
-    Math.ceil((scrollTop + viewportH) / ROW_HEIGHT) + OVERSCAN
-  );
-
-  const visible = tasks.slice(startIndex, endIndex);
-  const topSpacer = startIndex * ROW_HEIGHT;
-  const bottomSpacer = (tasks.length - endIndex) * ROW_HEIGHT;
-
-  return (
-    <div className="overflow-hidden">
-      <div
-        ref={scrollerRef}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-        className="max-h-[70vh] overflow-auto bg-white"
-      >
-        <div style={{ height: topSpacer }} />
-        {visible.map((t) => (
-          <TaskCard
-            key={t.TaskID}
-            task={t}
-            onComment={onComment}
-            onAssign={onAssign}
-            onEscalate={onEscalate}
-            isAdmin={isAdmin}
-            me={me}
-            showEscalate={showEscalate}
-          />
-        ))}
-        <div style={{ height: bottomSpacer }} />
-
-        {tasks.length === 0 && (
-          <div className="px-4 py-10 text-center text-sm text-slate-500">
-            No tasks match your filters.
+              )}
+            </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
 
-function TaskCard({
-  task: t,
-  onComment,
-  onAssign,
-  onEscalate,
-  isAdmin,
-  me,
-  showEscalate,
-}: {
-  task: TaskRow;
-  onComment: (task: TaskRow) => void;
-  onAssign: (task: TaskRow) => void;
-  onEscalate: (task: TaskRow) => void;
-  isAdmin: boolean;
-  me: User;
-  showEscalate: boolean;
-}) {
-  const claimed = !!t.ClaimedByUserID;
-  const dot = statusColor(t.Status);
-
-  return (
-    <div className="px-3 py-2 md:px-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md">
-        <div className="flex items-start gap-3">
-          <div className="mt-1 h-3 w-3 shrink-0 rounded-full" style={{ background: dot }} />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="truncate text-sm font-extrabold text-slate-900">
-                {t.TaskTitle}
+        {/* Notes / Issues */}
+        {(generator.notes || generator.knownIssues) && (
+          <div className="border-t border-slate-700 p-4 space-y-3">
+            {generator.notes && (
+              <div className="rounded-xl bg-slate-800/50 p-3">
+                <div className="text-xs text-slate-400 mb-1 flex items-center gap-1">
+                  <Info size={12} /> Notes
+                </div>
+                <div className="text-sm text-white">{generator.notes}</div>
               </div>
-              <Pill className="text-[10px]">{t.TaskType}</Pill>
-              {t.SIMTicketNumber && (
-                <Pill className="text-[10px]">SIM {t.SIMTicketNumber}</Pill>
+            )}
+            {generator.knownIssues && (
+              <div className="rounded-xl bg-amber-950/30 border border-amber-800 p-3">
+                <div className="text-xs text-amber-400 mb-1 flex items-center gap-1">
+                  <AlertTriangle size={12} /> Known Issues
+                </div>
+                <div className="text-sm text-amber-200">{generator.knownIssues}</div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Work Order Stats */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard label="Open" value={stats.open} color="#22c55e" />
+        <StatCard label="On Hold" value={stats.onHold} color="#f59e0b" />
+        <StatCard label="Overdue" value={stats.overdue} color="#ef4444" />
+        <StatCard label="Completed" value={stats.completed} color="#3b82f6" />
+      </div>
+
+      {/* Work Orders */}
+      <Card>
+        <CardHeader
+          title="Work Orders"
+          subtitle={`${workOrders.length} for this generator`}
+        />
+
+        {workOrders.length === 0 ? (
+          <div className="p-4 text-sm text-slate-400">
+            No work orders for this generator.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-700/50">
+            {workOrders.map((wo) => {
+              const woStatus = computeWOStatus(wo);
+              const priority = parsePriority(wo.priority);
+              const isClaimed = !!wo.claimedByUserId;
+              const isMyTask = wo.claimedByUserId === currentUser?.id;
+              const isCompleted = wo.status === "Completed";
+
+              return (
+                <div
+                  key={wo.id}
+                  className="px-4 py-4 hover:bg-slate-800/30 transition"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-white">
+                          {wo.description}
+                        </span>
+                        <StatusPill status={woStatus} />
+                        <PriorityPill priority={priority} />
+                      </div>
+                      <div className="text-sm text-slate-400 mt-1">
+                        WO# {wo.workOrderNumber} • {wo.woType}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        Due: {wo.complianceEndDate} • {getPriorityLabel(priority)}
+                        {wo.fsbNumber && ` • FSB: ${wo.fsbNumber}`}
+                      </div>
+                      {isClaimed && (
+                        <div className="text-xs text-blue-400 mt-1 flex items-center gap-1">
+                          <Hand size={10} />
+                          Claimed by {wo.claimedByUserName}
+                        </div>
+                      )}
+                      {wo.assignedToUserName && (
+                        <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                          <UserPlus size={10} />
+                          Assigned to {wo.assignedToUserName}
+                        </div>
+                      )}
+                      {wo.escalationReason && (
+                        <div className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                          <Flag size={10} />
+                          Escalated: {wo.escalationReason}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  {!isCompleted && (
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      {!isClaimed ? (
+                        <Button
+                          variant="primary"
+                          onClick={(e) => handleClaim(wo.workOrderNumber, e)}
+                        >
+                          <Hand size={12} /> Claim
+                        </Button>
+                      ) : isMyTask ? (
+                        <Button
+                          variant="ghost"
+                          onClick={(e) => handleUnclaim(wo.workOrderNumber, e)}
+                        >
+                          <Hand size={12} /> Unclaim
+                        </Button>
+                      ) : null}
+                      
+                      <Button
+                        variant="success"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAssignModal(wo.workOrderNumber);
+                        }}
+                      >
+                        <UserPlus size={12} /> Assign
+                      </Button>
+                      
+                      <Button
+                        variant="warn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowEscalateModal(wo.workOrderNumber);
+                        }}
+                      >
+                        <Flag size={12} /> Escalate
+                      </Button>
+                      
+                      <Button
+                        variant="solid"
+                        onClick={(e) => handleComplete(wo.workOrderNumber, e)}
+                      >
+                        <CheckCircle2 size={12} /> Complete
+                      </Button>
+                      
+                      <Button
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowCommentModal(wo.workOrderNumber);
+                        }}
+                      >
+                        <MessageSquare size={12} /> Comment
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Assign Modal */}
+      {showAssignModal && (
+        <Modal
+          title="Assign Work Order"
+          onClose={() => setShowAssignModal(null)}
+          onSubmit={() => {
+            if (!currentUser) return;
+            assignWorkOrder(showAssignModal, currentUser.id, currentUser.name);
+            setShowAssignModal(null);
+          }}
+        >
+          <p className="text-sm text-slate-300">
+            Assign WO# {showAssignModal} to {currentUser?.name}?
+          </p>
+        </Modal>
+      )}
+
+      {/* Escalate Modal */}
+      {showEscalateModal && (
+        <Modal
+          title="Escalate Work Order"
+          onClose={() => setShowEscalateModal(null)}
+          onSubmit={() => {
+            const reason = (document.getElementById("escalate-reason") as HTMLTextAreaElement)?.value;
+            if (!reason?.trim() || !currentUser) return;
+            escalateWorkOrder(showEscalateModal, reason, currentUser.name);
+            setShowEscalateModal(null);
+          }}
+        >
+          <div className="space-y-2">
+            <label className="text-sm text-slate-300">Escalation Reason</label>
+            <textarea
+              id="escalate-reason"
+              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+              rows={3}
+              placeholder="Enter reason for escalation..."
+            />
+          </div>
+        </Modal>
+      )}
+
+      {/* Comment Modal */}
+      {showCommentModal && (
+        <Modal
+          title="Add Comment"
+          onClose={() => setShowCommentModal(null)}
+          onSubmit={() => {
+            const comment = (document.getElementById("comment-text") as HTMLTextAreaElement)?.value;
+            if (!comment?.trim() || !currentUser) return;
+            addWorkOrderComment(showCommentModal, comment, currentUser.name);
+            setShowCommentModal(null);
+          }}
+        >
+          <div className="space-y-2">
+            <label className="text-sm text-slate-300">Comment</label>
+            <textarea
+              id="comment-text"
+              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+              rows={3}
+              placeholder="Enter your comment..."
+            />
+          </div>
+        </Modal>
+      )}
+
+      {/* Generator Info Modal */}
+      {showInfoModal && generator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto py-8">
+          <div className="w-full max-w-2xl mx-4 rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 to-slate-800 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-700 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Info size={18} className="text-blue-400" />
+                  Generator Information
+                </h3>
+                <p className="text-sm text-slate-400">{generator.unitNumber} • {generator.assetId}</p>
+              </div>
+              <Button variant="ghost" onClick={() => setShowInfoModal(false)}>
+                ✕
+              </Button>
+            </div>
+            
+            <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+              {/* Location */}
+              <InfoSection title="Location">
+                <InfoRow label="Campus" value={generator.campus} />
+                <InfoRow label="Building" value={generator.building} />
+                <InfoRow label="Unit Number" value={generator.unitNumber} />
+                <InfoRow label="Asset ID" value={generator.assetId} />
+              </InfoSection>
+
+              {/* Equipment Details */}
+              <InfoSection title="Equipment Details">
+                <InfoRow label="Manufacturer" value={generator.manufacturer} />
+                <InfoRow label="Model" value={generator.model} />
+                <InfoRow label="Serial Number" value={generator.serial} />
+                <InfoRow label="Size (KW)" value={generator.sizeKW} />
+                <InfoRow label="Enclosure Manufacturer" value={generator.enclosureManufacturer} />
+              </InfoSection>
+
+              {/* Status & Metrics */}
+              <InfoSection title="Status & Metrics">
+                <InfoRow label="Run Hours" value={generator.runHours} />
+                <InfoRow label="Fuel Level %" value={generator.fuelLevelPercent} />
+                <InfoRow label="PFHO Status" value={generator.pfhoStatus} />
+                <InfoRow label="FSB Status" value={generator.fsbStatus} />
+                <InfoRow label="Load Bank" value={generator.loadBank} />
+                <InfoRow label="Warranty Expiration" value={generator.warrantyExpiration} />
+              </InfoSection>
+
+              {/* PM Schedule */}
+              <InfoSection title="PM Schedule">
+                <InfoRow label="3 Month PM" value={generator.pm3M} />
+                <InfoRow label="3 Month Window" value={generator.pm3MWindow} />
+                <InfoRow label="6 Month PM" value={generator.pm6M} />
+                <InfoRow label="6 Month Window" value={generator.pm6MWindow} />
+                <InfoRow label="12 Month PM" value={generator.pm12M} />
+                <InfoRow label="12 Month Window" value={generator.pm12MWindow} />
+              </InfoSection>
+
+              {/* Notes */}
+              {(generator.notes || generator.knownIssues) && (
+                <InfoSection title="Notes & Issues">
+                  {generator.notes && (
+                    <div className="col-span-2 rounded-lg bg-slate-800/50 p-3">
+                      <div className="text-xs text-slate-400 mb-1">Notes</div>
+                      <div className="text-sm text-white whitespace-pre-wrap">{generator.notes}</div>
+                    </div>
+                  )}
+                  {generator.knownIssues && (
+                    <div className="col-span-2 rounded-lg bg-amber-950/30 border border-amber-800 p-3">
+                      <div className="text-xs text-amber-400 mb-1 flex items-center gap-1">
+                        <AlertTriangle size={12} /> Known Issues
+                      </div>
+                      <div className="text-sm text-amber-200 whitespace-pre-wrap">{generator.knownIssues}</div>
+                    </div>
+                  )}
+                </InfoSection>
               )}
             </div>
 
-            <div className="mt-1 line-clamp-2 text-[12px] text-slate-600">
-              {t.TaskDescription ?? "—"}
-            </div>
-          </div>
-
-          <div className="hidden md:flex flex-col items-end gap-1 text-[11px] font-semibold text-slate-700">
-            <div className="flex items-center gap-1">
-              <CalendarClock size={12} />
-              {new Date(t.DueDate).toLocaleDateString()}
-            </div>
-            <div className="flex items-center gap-1 text-slate-500">
-              <IdCard size={12} />
-              Assigned: {t.AssignedToUserName ?? "—"}
-            </div>
-            <div className="flex items-center gap-1 text-slate-500">
-              <BadgeAlert size={12} />
-              Claimed: {t.ClaimedByUserName ?? "—"}
+            <div className="border-t border-slate-700 px-6 py-4 flex justify-end">
+              <Button variant="primary" onClick={() => setShowInfoModal(false)}>
+                Close
+              </Button>
             </div>
           </div>
         </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
-          <Action onClick={() => onComment(t)} icon={MessageSquare} label="Comment" />
-          {!claimed ? (
-            <Action onClick={() => claimTask(t.TaskID, me)} icon={Hand} label="Claim" />
-          ) : (
-            <Action onClick={() => unclaimTask(t.TaskID, me)} icon={HandMetal} label="Unclaim" tone="warn" />
-          )}
-          <Action onClick={() => completeTask(t.TaskID, me)} icon={CheckCircle2} label="Complete" />
-          {showEscalate && (
-            <Action onClick={() => onEscalate(t)} icon={Siren} label="Escalate" tone="danger" />
-          )}
-          {isAdmin && (
-            <Action onClick={() => onAssign(t)} icon={UserPlus2} label="Assign" tone="admin" />
-          )}
-        </div>
-      </div>
+      )}
     </div>
-  );
-}
-
-/* ----------------- UI helpers ----------------- */
-
-function Chip({
-  label,
-  active,
-  onClick,
-  color,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  color?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "rounded-full border px-3 py-1 text-xs font-extrabold transition",
-        active
-          ? "bg-slate-900 text-white border-slate-900"
-          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-      ].join(" ")}
-      style={active && color ? { background: color, borderColor: color, color: "white" } : undefined}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Action({
-  onClick,
-  icon: Icon,
-  label,
-  tone,
-}: {
-  onClick: () => void;
-  icon: any;
-  label: string;
-  tone?: "warn" | "danger" | "admin";
-}) {
-  const base =
-    "inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-extrabold transition active:translate-y-[1px]";
-  const palette =
-    tone === "danger"
-      ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-      : tone === "warn"
-      ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
-      : tone === "admin"
-      ? "border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
-      : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
-
-  return (
-    <button onClick={onClick} className={`${base} ${palette}`}>
-      <Icon size={14} />
-      {label}
-    </button>
   );
 }
 
 function Modal({
+  title,
   children,
   onClose,
+  onSubmit,
 }: {
+  title: string;
   children: React.ReactNode;
   onClose: () => void;
+  onSubmit: () => void;
 }) {
   return (
-    <div onClick={onClose} className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl rounded-2xl bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.18)]"
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 to-slate-800 p-6 shadow-2xl">
+        <h3 className="text-lg font-bold text-white mb-4">{title}</h3>
+        <div className="mb-6">{children}</div>
+        <div className="flex gap-3 justify-end">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={onSubmit}>
+            Submit
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="font-bold text-white">{value}</div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-700 bg-slate-800/50 p-4">
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="mt-1 flex items-center gap-2">
+        <span className="h-3 w-3 rounded-full" style={{ background: color }} />
+        <span className="text-2xl font-extrabold text-white">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone =
+    status === "Overdue" ? "danger" :
+    status === "Due Soon" ? "warn" :
+    status === "On Hold" ? "warn" :
+    status === "Completed" ? "success" :
+    "neutral";
+  return <Pill tone={tone}>{status}</Pill>;
+}
+
+function PriorityPill({ priority }: { priority: number }) {
+  const tone = priority <= 2 ? "danger" : priority === 3 ? "warn" : "neutral";
+  return <Pill tone={tone}>P{priority}</Pill>;
+}
+
+function InfoSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h4 className="text-sm font-bold text-blue-400 mb-3 flex items-center gap-2">
+        <span className="h-1 w-1 rounded-full bg-blue-400" />
+        {title}
+      </h4>
+      <div className="grid grid-cols-2 gap-3">
         {children}
       </div>
     </div>
   );
 }
 
-function getComments(task: TaskRow): { userName: string; comment: string; ts: string }[] {
-  try {
-    return task.CommentsJSON ? JSON.parse(task.CommentsJSON) : [];
-  } catch {
-    return [];
-  }
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-slate-800/40 px-3 py-2">
+      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{label}</div>
+      <div className="text-sm font-semibold text-white mt-0.5">{value || "—"}</div>
+    </div>
+  );
 }

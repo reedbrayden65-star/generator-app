@@ -11,6 +11,19 @@ export type Permission =
   | "USER_MANAGE"
   | "REPORT_GENERATE";
 
+/** ✅ Normalize roles from UI/user data */
+export function normalizeRole(input: string): Role {
+  const r = (input || "")
+    .toUpperCase()
+    .replace(/\./g, "")
+    .replace(/\s+/g, "_"); // "Chief Eng." -> "CHIEF_ENG"
+
+  if (r === "CHIEF_ENG" || r === "CHIEF_ENG_") return "CHIEF_ENG";
+  if (r === "MANAGER") return "MANAGER";
+  if (r === "DCEO") return "DCEO";
+  return "DEVELOPER";
+}
+
 const ROLE_PERMS: Record<Role, Permission[]> = {
   DEVELOPER: [
     "TASK_VIEW",
@@ -48,7 +61,6 @@ const ROLE_PERMS: Record<Role, Permission[]> = {
     "REPORT_GENERATE",
   ],
 
-  // ✅ Basic worker: can escalate but cannot assign/manage users
   DCEO: [
     "TASK_VIEW",
     "TASK_CLAIM",
@@ -58,10 +70,12 @@ const ROLE_PERMS: Record<Role, Permission[]> = {
   ],
 };
 
-export function hasPermission(role: Role, perm: Permission) {
-  return ROLE_PERMS[role]?.includes(perm);
+export function hasPermission(roleLike: string, perm: Permission) {
+  const role = normalizeRole(roleLike);
+  return ROLE_PERMS[role].includes(perm);
 }
 
-export function isAdminRole(role: Role) {
+export function isAdminRole(roleLike: string) {
+  const role = normalizeRole(roleLike);
   return role === "DEVELOPER" || role === "CHIEF_ENG" || role === "MANAGER";
 }

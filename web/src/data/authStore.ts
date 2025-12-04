@@ -49,7 +49,34 @@ function loadState(): AuthState {
   return { currentAccountId: null, accounts: [], rememberMe: true };
 }
 
-let state: AuthState = loadState();
+// Auto-create a dev account for bypassing login
+function ensureDevAccount(s: AuthState): AuthState {
+  const devEmail = "dev@amazon.com";
+  const existing = s.accounts.find((a) => a.email === devEmail);
+  
+  if (existing) {
+    // Auto sign-in to existing dev account
+    return { ...s, currentAccountId: existing.id };
+  }
+  
+  // Create dev account
+  const devAcct: Account = {
+    id: "dev_account_001",
+    name: "Dev User",
+    email: devEmail,
+    teamCode: "SBN-OPS",
+    createdAtISO: new Date().toISOString(),
+    verified: true,
+  };
+  
+  return {
+    ...s,
+    accounts: [...s.accounts, devAcct],
+    currentAccountId: devAcct.id,
+  };
+}
+
+let state: AuthState = ensureDevAccount(loadState());
 const listeners = new Set<(s: AuthState) => void>();
 
 function persist() {
@@ -82,6 +109,10 @@ export function findAccountByEmail(email: string) {
 
 export function getCurrentAccount(): Account | null {
   return state.accounts.find((a) => a.id === state.currentAccountId) ?? null;
+}
+
+export function getCurrentUser(): Account | null {
+  return getCurrentAccount();
 }
 
 /**

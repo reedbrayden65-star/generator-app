@@ -182,22 +182,22 @@ function CompletedPage() {
           <Kpi label="Generators Covered" value={gens.length} />
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3 border-t border-slate-700 p-4 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:w-[460px]">
             <Search
-              className="absolute left-2 top-2.5 text-slate-400"
+              className="absolute left-2 top-2.5 text-slate-500"
               size={16}
             />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search completed tasks..."
-              className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-300"
+              className="w-full rounded-xl border border-slate-600 bg-slate-800 pl-8 pr-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Filter size={14} className="text-slate-400" />
+            <Filter size={14} className="text-slate-500" />
             <Chip
               label="All"
               active={mode === "All"}
@@ -222,12 +222,12 @@ function CompletedPage() {
         </div>
 
         {(mode === "Building" || mode === "Generator") && (
-          <div className="flex flex-col gap-2 border-t border-slate-100 px-4 py-3 md:flex-row md:items-center">
+          <div className="flex flex-col gap-2 border-t border-slate-700 px-4 py-3 md:flex-row md:items-center">
             {mode === "Building" && (
               <select
                 value={buildingFilter}
                 onChange={(e) => setBuildingFilter(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none"
+                className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-bold text-white outline-none"
               >
                 <option value="All">All Buildings</option>
                 {buildings.map((b) => (
@@ -242,7 +242,7 @@ function CompletedPage() {
               <select
                 value={genFilter}
                 onChange={(e) => setGenFilter(e.target.value)}
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-900 outline-none"
+                className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-bold text-white outline-none"
               >
                 <option value="All">All Generators</option>
                 {gens.map((g) => (
@@ -257,7 +257,7 @@ function CompletedPage() {
       </Card>
 
       <Card>
-        <div className="border-b border-slate-100 px-4 py-3 text-xs font-extrabold text-slate-600">
+        <div className="border-b border-slate-700 px-4 py-3 text-xs font-extrabold text-slate-400">
           Showing {filtered.length} completed task
           {filtered.length !== 1 ? "s" : ""}
         </div>
@@ -265,7 +265,7 @@ function CompletedPage() {
         <VirtualCompletedList rows={filtered} />
 
         {filtered.length === 0 && (
-          <div className="p-10 text-center text-sm text-slate-500">
+          <div className="p-10 text-center text-sm text-slate-400">
             No completed tasks match your filters.
           </div>
         )}
@@ -305,7 +305,7 @@ function VirtualCompletedList({ rows }: { rows: TaskRow[] }) {
     <div
       ref={scrollerRef}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      className="max-h-[72vh] overflow-auto bg-white"
+      className="max-h-[72vh] overflow-auto bg-slate-800"
     >
       <div style={{ height: topSpacer }} />
       {visible.map((t) => (
@@ -319,15 +319,15 @@ function VirtualCompletedList({ rows }: { rows: TaskRow[] }) {
 function CompletedCard({ t }: { t: TaskRow }) {
   return (
     <div className="px-3 py-2 md:px-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:shadow-md">
+      <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 shadow-lg transition hover:scale-[1.01] hover:shadow-xl">
         <div className="flex items-start gap-3">
-          <div className="mt-1 grid h-7 w-7 place-items-center rounded-full bg-emerald-600/10 text-emerald-700">
+          <div className="mt-1 grid h-7 w-7 place-items-center rounded-full bg-emerald-600/20 text-emerald-400">
             <CheckCircle2 size={16} />
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="truncate text-sm font-extrabold text-slate-900">
+              <div className="truncate text-sm font-extrabold text-white">
                 {t.TaskTitle}
               </div>
               <Pill tone="success" className="text-[10px]">
@@ -339,11 +339,11 @@ function CompletedCard({ t }: { t: TaskRow }) {
               )}
             </div>
 
-            <div className="mt-1 line-clamp-2 text-[12px] text-slate-600">
+            <div className="mt-1 line-clamp-2 text-[12px] text-slate-400">
               {t.TaskDescription ?? "—"}
             </div>
 
-            <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-700">
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-300">
               <Meta icon={Building2} label={t.BuildingName} />
               <Meta icon={Zap} label={t.GeneratorID} />
               <Meta
@@ -355,13 +355,13 @@ function CompletedCard({ t }: { t: TaskRow }) {
             </div>
 
             {(t as any).EscalationReason && (
-              <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-900">
+              <div className="mt-2 rounded-xl border border-amber-900 bg-amber-950 px-3 py-2 text-[12px] font-semibold text-amber-200">
                 Escalation reason: {(t as any).EscalationReason}
               </div>
             )}
           </div>
 
-          <div className="hidden md:flex flex-col items-end gap-2 text-[11px] font-semibold text-slate-600">
+          <div className="hidden md:flex flex-col items-end gap-2 text-[11px] font-semibold text-slate-500">
             <div className="inline-flex items-center gap-1">
               <FileText size={12} />
               {t.TaskID}
@@ -377,9 +377,9 @@ function CompletedCard({ t }: { t: TaskRow }) {
 
 function Kpi({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="text-[11px] font-semibold text-slate-500">{label}</div>
-      <div className="mt-1 text-xl font-extrabold text-slate-900">{value}</div>
+    <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 shadow-lg">
+      <div className="text-[11px] font-semibold text-slate-400">{label}</div>
+      <div className="mt-1 text-xl font-extrabold text-white">{value}</div>
     </div>
   );
 }
@@ -399,8 +399,8 @@ function Chip({
       className={[
         "rounded-full border px-3 py-1 text-xs font-extrabold transition",
         active
-          ? "bg-slate-900 text-white border-slate-900"
-          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
+          ? "bg-blue-600 text-white border-blue-600"
+          : "bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600",
       ].join(" ")}
     >
       {label}
@@ -410,8 +410,8 @@ function Chip({
 
 function Meta({ icon: Icon, label }: { icon: any; label: string }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-1">
-      <Icon size={12} className="text-slate-500" />
+    <div className="inline-flex items-center gap-1 rounded-full bg-slate-700/50 px-2 py-1">
+      <Icon size={12} className="text-slate-400" />
       <span>{label}</span>
     </div>
   );

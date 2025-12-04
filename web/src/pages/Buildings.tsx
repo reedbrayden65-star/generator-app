@@ -1,154 +1,107 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { TaskRow } from "../data/mockTasks";
-import { subscribe } from "../data/taskStore";
-import { getTeamTasks } from "../data/teamStore";
-import { getCurrentAccount } from "../data/authStore";
-import { Building2, ArrowRight } from "lucide-react";
-import { Card, CardHeader, Button, Pill } from "../components/ui";
-
-function normalizeStatus(raw: any) {
-  const s = String(raw || "").toLowerCase();
-  if (s.includes("urgent")) return "URGENT";
-  if (s.includes("past")) return "PAST_DUE";
-  if (s.includes("upcoming")) return "UPCOMING";
-  if (s.includes("escalat")) return "ESCALATED";
-  if (s.includes("complete")) return "COMPLETED";
-  return "CURRENT";
-}
+import { Building2, ArrowLeft, Zap, ClipboardList, Search, ArrowRight } from "lucide-react";
+import { Card, CardHeader, Button, Pill, Input } from "../components/ui";
+import { getBuildings, subscribe } from "../data/dataStore";
+import type { Building } from "../data/types";
 
 export default function BuildingsPage() {
   const nav = useNavigate();
-  const acct = getCurrentAccount();
-
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
-    if (!acct?.teamCode) {
-      nav("/login");
-      return;
-    }
+    const update = () => setBuildings(getBuildings());
+    update();
+    return subscribe(update);
+  }, []);
 
-    // Load team tasks
-    const teamTasks = getTeamTasks(acct.teamCode);
-    setTasks(teamTasks);
-
-    // Subscribe to changes
-    const unsub = subscribe(() => {
-      const updated = getTeamTasks(acct.teamCode);
-      setTasks(updated);
-    });
-
-    return unsub;
-  }, [acct, nav]);
-
-  const buildings = useMemo(() => {
-    const buildingMap = new Map<string, TaskRow[]>();
-    
-    for (const task of tasks) {
-      if (!buildingMap.has(task.BuildingName)) {
-        buildingMap.set(task.BuildingName, []);
-      }
-      buildingMap.get(task.BuildingName)!.push(task);
-    }
-
-    return Array.from(buildingMap.entries())
-      .map(([name, buildingTasks]) => {
-        const generators = new Set(buildingTasks.map(t => t.GeneratorID)).size;
-        const urgent = buildingTasks.filter(t => normalizeStatus(t.Status) === "URGENT").length;
-        const pastDue = buildingTasks.filter(t => normalizeStatus(t.Status) === "PAST_DUE").length;
-        const escalated = buildingTasks.filter(t => normalizeStatus(t.Status) === "ESCALATED").length;
-
-        return {
-          name,
-          taskCount: buildingTasks.length,
-          generatorCount: generators,
-          urgent,
-          pastDue,
-          escalated,
-        };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [tasks]);
-
-  if (!acct) return null;
+  const filtered = buildings.filter(b => 
+    b.name.toLowerCase().includes(search.toLowerCase()) ||
+    b.campus.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="space-y-5">
       <Card>
         <CardHeader
           title="Buildings"
-          subtitle={`${buildings.length} building${buildings.length !== 1 ? "s" : ""} • ${tasks.length} total tasks`}
+          subtitle={`${buildings.length} building${buildings.length !== 1 ? "s" : ""}`}
+          icon={<Building2 size={16} />}
           right={
             <Button variant="ghost" onClick={() => nav("/")}>
-              Back to Dashboard <ArrowRight size={16} />
+              <ArrowLeft size={14} /> Dashboard
             </Button>
           }
         />
+        <div className="p-4 border-t border-slate-700/40">
+          <Input
+            placeholder="Search buildings..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            icon={<Search size={16} />}
+          />
+        </div>
       </Card>
 
-      {buildings.length === 0 ? (
+      {filtered.length === 0 ? (
         <Card>
-          <div className="p-8 text-center text-sm text-slate-500">
-            No buildings yet. Upload a brain file to get started.
+          <div className="p-12 text-center">
+            <Building2 size={48} className="mx-auto text-slate-600 mb-4" />
+            <div className="text-lg font-bold text-white mb-2">No Buildings Found</div>
+            <div className="text-sm text-slate-400">
+              {buildings.length === 0 
+                ? "Upload generator and work order data to get started."
+                : "No buildings match your search."}
+            </div>
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {buildings.map((building) => (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((building) => (
             <button
-              key={building.name}
+              key={building.id}
               onClick={() => nav(`/buildings/${encodeURIComponent(building.name)}`)}
-              className="text-left"
+              className="text-left group"
             >
-              <Card className="h-full hover:shadow-lg transition">
-                <div className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 text-white">
-                      <Building2 size={18} />
+              <Card className="h-full transition-all duration-300 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 hover:scale-[1.02]">
+                <div className="p-5">
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="relative grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-blue-500/25 to-blue-600/15 text-blue-400 shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-all">
+                      <Building2 size={24} />
+                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-lg font-extrabold text-slate-900 truncate">
+                      <div className="text-lg font-black text-white truncate group-hover:text-blue-400 transition-colors">
                         {building.name}
                       </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {building.generatorCount} generator{building.generatorCount !== 1 ? "s" : ""}
+                      <div className="text-xs text-slate-400 mt-1.5 flex items-center gap-3">
+                        <span className="flex items-center gap-1.5">
+                          <Zap size={12} className="text-purple-400" />
+                          {building.generatorCount} gens
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <ClipboardList size={12} className="text-blue-400" />
+                          {building.workOrderCount} WOs
+                        </span>
                       </div>
                     </div>
+                    <ArrowRight size={16} className="text-slate-600 group-hover:text-blue-400 group-hover:translate-x-1 transition-all mt-1" />
                   </div>
 
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-600">Tasks:</span>
-                      <span className="font-extrabold text-slate-900">{building.taskCount}</span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {building.urgent > 0 && (
-                        <Pill tone="danger" className="text-[10px]">
-                          {building.urgent} Urgent
-                        </Pill>
-                      )}
-                      {building.pastDue > 0 && (
-                        <Pill tone="warn" className="text-[10px]">
-                          {building.pastDue} Past Due
-                        </Pill>
-                      )}
-                      {building.escalated > 0 && (
-                        <Pill tone="danger" className="text-[10px]">
-                          {building.escalated} Escalated
-                        </Pill>
-                      )}
-                      {building.urgent === 0 && building.pastDue === 0 && building.escalated === 0 && (
-                        <Pill tone="neutral" className="text-[10px]">
-                          All clear
-                        </Pill>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 text-xs text-slate-500">
-                    Click to view generators →
+                  <div className="flex flex-wrap gap-2">
+                    {building.openCount > 0 && (
+                      <Pill tone="success">{building.openCount} Open</Pill>
+                    )}
+                    {building.onHoldCount > 0 && (
+                      <Pill tone="warn">{building.onHoldCount} Hold</Pill>
+                    )}
+                    {building.completedCount > 0 && (
+                      <Pill tone="info">{building.completedCount} Done</Pill>
+                    )}
+                    {building.workOrderCount === 0 && (
+                      <Pill tone="success">All Clear ✓</Pill>
+                    )}
                   </div>
                 </div>
               </Card>

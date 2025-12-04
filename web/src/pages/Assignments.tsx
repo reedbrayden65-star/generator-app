@@ -94,20 +94,20 @@ function Assignments() {
         />
 
         <div className="grid grid-cols-2 gap-3 p-4 md:grid-cols-4">
-          <Kpi icon={ClipboardCheck} label="Total" value={counts.total} color="#0f172a" />
+          <Kpi icon={ClipboardCheck} label="Total" value={counts.total} color="#3b82f6" />
           <Kpi icon={Zap} label="Urgent" value={counts.urgent} color={statusColor("Urgent")} />
           <Kpi icon={AlertTriangle} label="Past Due" value={counts.pastDue} color={statusColor("PastDue")} />
           <Kpi icon={Clock3} label="Upcoming" value={counts.upcoming} color={statusColor("Upcoming")} />
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 border-t border-slate-700 p-4 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:w-96">
-            <Search className="absolute left-2 top-2.5 text-slate-400" size={16} />
+            <Search className="absolute left-2 top-2.5 text-slate-500" size={16} />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search tasks, buildings, gens, SIM..."
-              className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-3 py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-300"
+              className="w-full rounded-xl border border-slate-600 bg-slate-800 pl-8 pr-3 py-2 text-sm font-semibold text-white placeholder:text-slate-500 outline-none focus:border-blue-500"
             />
           </div>
 
@@ -115,14 +115,14 @@ function Assignments() {
             <Button
               variant="ghost"
               onClick={() => setShowOnlyUrgent(false)}
-              className={!showOnlyUrgent ? "bg-slate-900 text-white border-slate-900" : ""}
+              className={!showOnlyUrgent ? "bg-blue-600 text-white border-blue-600" : ""}
             >
               All
             </Button>
             <Button
               variant="ghost"
               onClick={() => setShowOnlyUrgent(true)}
-              className={showOnlyUrgent ? "bg-slate-900 text-white border-slate-900" : ""}
+              className={showOnlyUrgent ? "bg-blue-600 text-white border-blue-600" : ""}
             >
               Urgent / Escalated
             </Button>
@@ -133,16 +133,16 @@ function Assignments() {
       <div className="space-y-4">
         {grouped.map(([groupKey, tasks]) => (
           <Card key={groupKey}>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
               <div className="flex items-center gap-2">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-900 text-white">
+                <div className="grid h-9 w-9 place-items-center rounded-xl bg-blue-600 text-white">
                   <Building2 size={16} />
                 </div>
                 <div>
-                  <div className="text-sm font-extrabold text-slate-900">
+                  <div className="text-sm font-extrabold text-white">
                     {groupKey}
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-[11px] text-slate-400">
                     {tasks.length} task{tasks.length !== 1 ? "s" : ""}
                   </div>
                 </div>
@@ -158,7 +158,7 @@ function Assignments() {
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-700">
               {tasks.map(t => {
                 const dot = statusColor(t.Status);
                 return (
@@ -166,11 +166,11 @@ function Assignments() {
                     <div className="flex items-start gap-3">
                       <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ background: dot }} />
                       <div className="min-w-0">
-                        <div className="truncate font-extrabold text-slate-900">{t.TaskTitle}</div>
-                        <div className="mt-0.5 text-[11px] text-slate-500">
+                        <div className="truncate font-extrabold text-white">{t.TaskTitle}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-400">
                           Due: {new Date(t.DueDate).toLocaleDateString()} • {t.TaskType}
                           {t.SIMTicketNumber && (
-                            <span className="ml-2 font-bold text-slate-700">
+                            <span className="ml-2 font-bold text-slate-300">
                               SIM {t.SIMTicketNumber}
                             </span>
                           )}
@@ -190,7 +190,7 @@ function Assignments() {
 
         {assignedTasks.length === 0 && (
           <Card>
-            <div className="p-8 text-center text-sm text-slate-500">
+            <div className="p-8 text-center text-sm text-slate-400">
               No tasks assigned to {me.name}.
             </div>
           </Card>
@@ -212,14 +212,14 @@ function Kpi({
   color: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+    <div className="rounded-2xl border border-slate-700 bg-slate-800/50 p-3 shadow-lg">
+      <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">
         <Icon size={14} />
         {label}
       </div>
       <div className="mt-1 flex items-center gap-2">
         <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
-        <span className="text-xl font-extrabold text-slate-900">{value}</span>
+        <span className="text-xl font-extrabold text-white">{value}</span>
       </div>
     </div>
   );

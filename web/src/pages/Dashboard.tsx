@@ -1,409 +1,353 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { getCurrentAccount } from "../data/authStore";
-import { getTeamByCode, getTeamTasks } from "../data/teamStore";
-
-// namespace imports so missing named exports never crash
-import * as taskStore from "../data/taskStore";
-import * as userStore from "../data/userStore";
-
 import {
-  UploadCloud,
-  Sparkles,
   Building2,
   Zap,
   ClipboardList,
   ArrowRight,
-  Siren,
+  AlertTriangle,
+  Clock,
+  UploadCloud,
   Flame,
-  Layers,
+  CalendarDays,
 } from "lucide-react";
-
 import { Card, CardHeader, Button, Pill } from "../components/ui";
-
-type AnyTask = any;
+import {
+  getBuildings,
+  getWorkOrders,
+  getGenerators,
+  subscribe,
+} from "../data/dataStore";
+import type { WorkOrder, Building } from "../data/types";
+import { computeWOStatus, parsePriority } from "../data/types";
 
 export default function Dashboard() {
   const nav = useNavigate();
-  const acct = getCurrentAccount();
-
-  const [teamUploaded, setTeamUploaded] = useState<boolean | null>(null);
-  const [tasks, setTasks] = useState<AnyTask[]>([]);
-  const [me, setMe] = useState<any>(null);
-
-
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [generatorCount, setGeneratorCount] = useState(0);
 
   useEffect(() => {
-    if (!acct) {
-      nav("/login");
-      return;
-    }
-
-    // team readiness
-    const team = getTeamByCode(acct.teamCode);
-    setTeamUploaded(!!team?.brainUploaded);
-
-    // ---- tasks: load team-specific tasks ----
-    const teamTasks = getTeamTasks(acct.teamCode);
-    setTasks(teamTasks);
-
-    // subscribe to global task changes
-    const sT: any = taskStore;
-    let unsubTask: any;
-    if (typeof sT.subscribe === "function") unsubTask = sT.subscribe(() => {
-      // When tasks change globally, reload team tasks
-      const updated = getTeamTasks(acct.teamCode);
-      setTasks(updated);
-    });
-
-    // ---- user: hydrate + subscribe safely ----
-    const sU: any = userStore;
-
-    try {
-      if (typeof sU.getCurrentUser === "function") setMe(sU.getCurrentUser());
-      else if (typeof sU.getUser === "function") setMe(sU.getUser());
-      else if (sU.currentUser) setMe(sU.currentUser);
-    } catch {
-      setMe(null);
-    }
-
-    let unsubUser: any;
-    if (typeof sU.subscribeUser === "function") unsubUser = sU.subscribeUser(setMe);
-    else if (typeof sU.subscribe === "function") unsubUser = sU.subscribe(setMe);
-    else if (typeof sU.onChange === "function") unsubUser = sU.onChange(setMe);
-
-    return () => {
-      unsubTask?.();
-      unsubUser?.();
+    const update = () => {
+      setBuildings(getBuildings());
+      setWorkOrders(getWorkOrders());
+      setGeneratorCount(getGenerators().length);
     };
-  }, [acct, nav]);
+    update();
+    return subscribe(update);
+  }, []);
 
-  // ✅ All hooks must be called unconditionally, before any early returns
   const stats = useMemo(() => {
-    const s = {
-      total: tasks.length,
-      current: 0,
-      upcoming: 0,
-      pastDue: 0,
-      urgent: 0,
-      escalated: 0,
-      completed: 0,
-    };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const open = workOrders.filter(wo => wo.status === "Open").length;
+    const onHold = workOrders.filter(wo => wo.status === "On Hold").length;
+    const overdue = workOrders.filter(wo => computeWOStatus(wo) === "Overdue").length;
+    
+    const dueToday = workOrders.filter(wo => {
+      if (wo.status === "Completed") return false;
+      const endDate = new Date(wo.complianceEndDate);
+      endDate.setHours(0, 0, 0, 0);
+      return endDate.getTime() === today.getTime();
+    }).length;
+    
+    const urgent = workOrders.filter(wo => 
+      wo.status === "Open" && parsePriority(wo.priority) <= 2
+    ).length;
 
-    for (const t of tasks) {
-      const st = normalizeStatus(t.Status);
-      if (st === "CURRENT") s.current++;
-      if (st === "UPCOMING") s.upcoming++;
-      if (st === "PAST_DUE") s.pastDue++;
-      if (st === "URGENT") s.urgent++;
-      if (st === "ESCALATED") s.escalated++;
-      if (st === "COMPLETED") s.completed++;
-    }
+    return { open, onHold, overdue, dueToday, urgent, total: workOrders.length };
+  }, [workOrders]);
 
-    return s;
-  }, [tasks]);
-
-  const myAssigned = useMemo(() => {
-    const myName = me?.name;
-    const myId = me?.id;
-    return tasks.filter((t) =>
-      t.AssignedTo === myId ||
-      t.AssignedTo === myName ||
-      t.ClaimedBy === myId ||
-      t.ClaimedBy === myName
-    );
-  }, [tasks, me]);
-
-  const escalated = useMemo(
-    () => tasks.filter((t) => normalizeStatus(t.Status) === "ESCALATED"),
-    [tasks]
-  );
-
-  const completed = useMemo(
-    () => tasks.filter((t) => normalizeStatus(t.Status) === "COMPLETED"),
-    [tasks]
-  );
-
-  const hotList = useMemo(() => {
-    const list = tasks.filter((t) => {
-      const st = normalizeStatus(t.Status);
-      return st === "UPCOMING" || st === "PAST_DUE" || st === "URGENT";
-    });
-    return list.slice(0, 6);
-  }, [tasks]);
-
-  // ✅ Early returns AFTER all hooks
-  if (teamUploaded === null) {
+  // No data state
+  if (buildings.length === 0 && workOrders.length === 0) {
     return (
-      <div className="mx-auto max-w-3xl">
-        <Card>
-          <div className="p-8 text-sm text-slate-500">
-            Loading dashboard…
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  if (acct && !teamUploaded) {
-    return (
-      <div className="mx-auto max-w-4xl space-y-4">
-        <Card>
-          <CardHeader title="Dashboard" subtitle={`Team: ${acct.teamCode}`} />
-          <div className="px-4 pb-5">
-            <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-6 shadow-sm">
-              <div className="flex items-center gap-3 text-xl font-extrabold text-slate-900">
-                <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-900 text-white">
-                  <Sparkles size={18} />
-                </div>
-                Your team is empty
-              </div>
-
-              <div className="mt-2 text-sm text-slate-600">
-                No buildings, generators, or tasks yet.
-                <br />
-                A Chief needs to upload the Excel brain to populate everything.
-              </div>
-
-              <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <Stat icon={Building2} label="Buildings" value="0" />
-                <Stat icon={Zap} label="Generators" value="0" />
-                <Stat icon={ClipboardList} label="Tasks" value="0" />
-              </div>
-
-              <div className="mt-6 flex flex-col gap-2 md:flex-row">
-                <Button onClick={() => nav("/upload-brain")} className="flex-1">
-                  <UploadCloud size={16} />
-                  Upload Team Brain
-                </Button>
-
-                <Button variant="ghost" onClick={() => nav("/assignments")}>
-                  View My Assignments
-                  <ArrowRight size={16} />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* KEY STATS + QUICK ACTIONS */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <HeroStat label="My Tasks" value={myAssigned.length} icon={ClipboardList} onClick={() => nav("/assignments")} />
-        <HeroStat label="Urgent" value={stats.urgent} icon={Flame} tone="danger" onClick={() => nav("/assignments")} />
-        <HeroStat label="Escalated" value={stats.escalated} icon={Siren} tone="danger" onClick={() => nav("/escalations")} />
-        <HeroStat label="Total" value={stats.total} icon={Layers} tone="neutral" onClick={() => nav("/")} />
-      </div>
-
-      {/* LOWER PANELS */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Panel
-          title="My Assignments"
-          count={myAssigned.length}
-          button="View all"
-          onButton={() => nav("/assignments")}
-          items={myAssigned}
-          empty="No assignments yet."
-          onOpen={(t: AnyTask) => nav(`/generators/${encodeURIComponent(t.GeneratorID)}`)}
-        />
-
-        <Panel
-          title="Escalations"
-          count={escalated.length}
-          button="Open queue"
-          onButton={() => nav("/escalations")}
-          items={escalated}
-          empty="No escalations right now."
-          tone="danger"
-          onOpen={(t: AnyTask) => nav(`/generators/${encodeURIComponent(t.GeneratorID)}`)}
-        />
-
-        <Panel
-          title="Recently Completed"
-          count={completed.length}
-          button="View log"
-          onButton={() => nav("/completed")}
-          items={completed}
-          empty="Nothing completed yet."
-          tone="success"
-          onOpen={(t: AnyTask) => nav(`/generators/${encodeURIComponent(t.GeneratorID)}`)}
-        />
-      </div>
-
-      {/* HOT LIST */}
       <Card>
-        <CardHeader title="Hot List" subtitle="Upcoming / Past Due / Urgent" />
-        <div className="px-4 pb-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {hotList.map((t) => (
-            <HotTaskCard
-              key={t.TaskID}
-              t={t}
-              onClick={() => nav(`/generators/${encodeURIComponent(t.GeneratorID)}`)}
-            />
-          ))}
-          {hotList.length === 0 && (
-            <div className="text-sm text-slate-500 px-2 py-4">Nothing hot right now.</div>
-          )}
+        <div className="p-12 text-center">
+          <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-800/50 text-slate-500 mb-5">
+            <UploadCloud size={40} />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">No Data Yet</h2>
+          <p className="text-sm text-slate-400 mb-6">
+            Upload your CSV files to get started with GenOps.
+          </p>
+          <Button onClick={() => nav("/upload")} size="md">
+            <UploadCloud size={16} />
+            Upload Data
+          </Button>
         </div>
       </Card>
-    </div>
-  );
-}
-
-/* ---------- Helpers ---------- */
-
-function normalizeStatus(raw: any) {
-  const s = String(raw || "").toLowerCase();
-  if (s.includes("urgent")) return "URGENT";
-  if (s.includes("past")) return "PAST_DUE";
-  if (s.includes("upcoming")) return "UPCOMING";
-  if (s.includes("escalat")) return "ESCALATED";
-  if (s.includes("complete")) return "COMPLETED";
-  return "CURRENT";
-}
-
-function prettyStatus(k: string) {
-  switch (k) {
-    case "PAST_DUE": return "Past Due";
-    default: return k[0] + k.slice(1).toLowerCase();
+    );
   }
-}
 
-function Stat({ icon: Icon, label, value }: any) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-        <Icon size={14} /> {label}
+    <div className="space-y-6">
+      {/* Hero Stats */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <HeroStat
+          icon={Building2}
+          label="Buildings"
+          value={buildings.length}
+          color="blue"
+          onClick={() => nav("/buildings")}
+        />
+        <HeroStat
+          icon={Zap}
+          label="Generators"
+          value={generatorCount}
+          color="purple"
+        />
+        <HeroStat
+          icon={ClipboardList}
+          label="Open WOs"
+          value={stats.open}
+          color="emerald"
+          onClick={() => nav("/work-orders?filter=open")}
+        />
+        <HeroStat
+          icon={AlertTriangle}
+          label="Needs Attention"
+          value={stats.overdue + stats.urgent}
+          color="red"
+          onClick={() => nav("/work-orders?filter=overdue")}
+          pulse={stats.overdue > 0}
+        />
       </div>
-      <div className="mt-1 text-2xl font-extrabold text-slate-900">{value}</div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <QuickAction
+          icon={AlertTriangle}
+          title="Past Due"
+          count={stats.overdue}
+          color="red"
+          onClick={() => nav("/work-orders?filter=overdue")}
+        />
+        <QuickAction
+          icon={CalendarDays}
+          title="Due Today"
+          count={stats.dueToday}
+          color="orange"
+          onClick={() => nav("/work-orders?filter=due-today")}
+        />
+        <QuickAction
+          icon={Flame}
+          title="Urgent"
+          count={stats.urgent}
+          color="amber"
+          onClick={() => nav("/work-orders?filter=urgent")}
+        />
+      </div>
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        {/* Buildings - Takes 2 columns */}
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader
+              title="Buildings"
+              subtitle={`${buildings.length} total`}
+              right={
+                <Button variant="ghost" onClick={() => nav("/buildings")}>
+                  All <ArrowRight size={14} />
+                </Button>
+              }
+            />
+            <div className="p-2">
+              {buildings.slice(0, 6).map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => nav(`/buildings/${encodeURIComponent(b.name)}`)}
+                  className="group w-full flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-800/50 transition-all"
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-500/15 text-blue-400">
+                    <Building2 size={16} />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <div className="text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                      {b.name}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      {b.generatorCount} gens • {b.workOrderCount} WOs
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {b.openCount > 0 && <MiniPill color="emerald">{b.openCount}</MiniPill>}
+                    {b.onHoldCount > 0 && <MiniPill color="amber">{b.onHoldCount}</MiniPill>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* Recent Work Orders - Takes 3 columns */}
+        <div className="lg:col-span-3">
+          <Card>
+            <CardHeader
+              title="Recent Work Orders"
+              subtitle={`${stats.total} total`}
+              right={
+                <Button variant="ghost" onClick={() => nav("/work-orders")}>
+                  All <ArrowRight size={14} />
+                </Button>
+              }
+            />
+            <div className="p-2">
+              {workOrders.slice(0, 6).map((wo) => {
+                const woStatus = computeWOStatus(wo);
+                const priority = parsePriority(wo.priority);
+                return (
+                  <button
+                    key={wo.id}
+                    onClick={() => nav(`/work-orders/${wo.workOrderNumber}`)}
+                    className="group w-full flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-slate-800/50 transition-all"
+                  >
+                    <StatusDot status={woStatus} />
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                        {wo.description}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {wo.organization} • {wo.workOrderNumber}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {priority <= 2 && <MiniPill color="red">P{priority}</MiniPill>}
+                      <StatusPill status={woStatus} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
 
-function HeroStat({ label, value, icon: Icon, tone="neutral", onClick }: any) {
-  const toneClass =
-    tone === "warning" ? "bg-amber-50 border-amber-200 text-amber-900" :
-    tone === "orange" ? "bg-orange-50 border-orange-200 text-orange-900" :
-    tone === "danger" ? "bg-rose-50 border-rose-200 text-rose-900" :
-    "bg-white border-slate-200 text-slate-900";
+
+function HeroStat({
+  icon: Icon,
+  label,
+  value,
+  color,
+  onClick,
+  pulse,
+}: {
+  icon: any;
+  label: string;
+  value: number;
+  color: "blue" | "purple" | "emerald" | "red";
+  onClick?: () => void;
+  pulse?: boolean;
+}) {
+  const colors = {
+    blue: "from-blue-500/20 to-blue-600/10 text-blue-400 shadow-blue-500/20",
+    purple: "from-purple-500/20 to-purple-600/10 text-purple-400 shadow-purple-500/20",
+    emerald: "from-emerald-500/20 to-emerald-600/10 text-emerald-400 shadow-emerald-500/20",
+    red: "from-red-500/20 to-red-600/10 text-red-400 shadow-red-500/20",
+  };
+
+  const Component = onClick ? "button" : "div";
 
   return (
-    <button onClick={onClick} className={`rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${toneClass}`}>
-      <div className="flex items-center justify-between">
-        <div className="text-xs font-bold opacity-70">{label}</div>
-        <Icon size={16} className="opacity-70" />
-      </div>
-      <div className="mt-1 text-2xl font-extrabold">{value}</div>
-    </button>
-  );
-}
-
-function MiniTaskRow({ t, onClick, tone="neutral" }: any) {
-  const st = normalizeStatus(t.Status);
-  const pillTone =
-    tone === "danger" ? "danger" :
-    tone === "success" ? "success" :
-    st === "URGENT" ? "danger" :
-    st === "PAST_DUE" ? "danger" :
-    st === "UPCOMING" ? "warn" :
-    st === "ESCALATED" ? "danger" :
-    st === "COMPLETED" ? "success" :
-    "neutral";
-
-  return (
-    <button onClick={onClick} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-extrabold text-slate-900">
-            {t.TaskTitle ?? t.Title ?? "Task"}
-          </div>
-          <div className="truncate text-xs text-slate-500">
-            {t.BuildingName} • {t.GeneratorID}
-          </div>
+    <Component
+      onClick={onClick}
+      className={`group relative overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-800/80 to-slate-900/60 p-5 text-left transition-all hover:border-slate-600/70 hover:shadow-xl ${onClick ? "cursor-pointer hover:scale-[1.02]" : ""}`}
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</div>
+          <div className={`text-3xl font-black text-white ${pulse ? "animate-pulse" : ""}`}>{value}</div>
         </div>
-        <Pill tone={pillTone}>{prettyStatus(st)}</Pill>
-      </div>
-    </button>
-  );
-}
-
-function HotTaskCard({ t, onClick }: any) {
-  const st = normalizeStatus(t.Status);
-  const tone =
-    st === "URGENT" ? "danger" :
-    st === "PAST_DUE" ? "danger" :
-    st === "UPCOMING" ? "warn" :
-    "neutral";
-
-  return (
-    <button onClick={onClick} className="cursor-pointer text-left">
-      <Card className="h-full">
-        <div className="p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="text-sm font-extrabold text-slate-900 truncate">
-              {t.TaskTitle ?? t.Title ?? "Task"}
-            </div>
-            <Pill tone={tone}>{prettyStatus(st)}</Pill>
-          </div>
-          <div className="text-xs text-slate-600">
-            {t.BuildingName} • {t.GeneratorID}
-          </div>
-          {t.DueDate && (
-            <div className="text-xs text-slate-500">
-              Due: <span className="font-bold">{t.DueDate}</span>
-            </div>
-          )}
+        <div className={`grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br ${colors[color]} shadow-lg`}>
+          <Icon size={22} />
         </div>
-      </Card>
-    </button>
+      </div>
+      {onClick && (
+        <ArrowRight size={14} className="absolute bottom-4 right-4 text-slate-600 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+      )}
+    </Component>
   );
 }
 
-function EmptyNote({ text }: { text: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
-      {text}
-    </div>
-  );
-}
-
-function Panel({
+function QuickAction({
+  icon: Icon,
   title,
   count,
-  button,
-  onButton,
-  items,
-  empty,
-  tone,
-  onOpen,
-}: any) {
+  color,
+  onClick,
+}: {
+  icon: any;
+  title: string;
+  count: number;
+  color: "red" | "orange" | "amber";
+  onClick: () => void;
+}) {
+  const colors = {
+    red: "border-red-500/30 hover:border-red-500/50 bg-red-500/5 hover:bg-red-500/10",
+    orange: "border-orange-500/30 hover:border-orange-500/50 bg-orange-500/5 hover:bg-orange-500/10",
+    amber: "border-amber-500/30 hover:border-amber-500/50 bg-amber-500/5 hover:bg-amber-500/10",
+  };
+  const iconColors = {
+    red: "text-red-400",
+    orange: "text-orange-400",
+    amber: "text-amber-400",
+  };
+
+  if (count === 0) return null;
+
   return (
-    <Card>
-      <CardHeader
-        title={title}
-        subtitle={`${count} tasks`}
-        right={
-          <Button variant="ghost" onClick={onButton}>
-            {button} <ArrowRight size={16} />
-          </Button>
-        }
-      />
-      <div className="px-4 pb-4 space-y-2">
-        {items.slice(0, 5).map((t: AnyTask) => (
-          <MiniTaskRow
-            key={t.TaskID}
-            t={t}
-            tone={tone}
-            onClick={() => onOpen(t)}
-          />
-        ))}
-        {items.length === 0 && <EmptyNote text={empty} />}
+    <button
+      onClick={onClick}
+      className={`group flex items-center gap-4 rounded-xl border p-4 transition-all ${colors[color]}`}
+    >
+      <div className={`grid h-10 w-10 place-items-center rounded-lg bg-slate-800/50 ${iconColors[color]}`}>
+        <Icon size={18} />
       </div>
-    </Card>
+      <div className="flex-1 text-left">
+        <div className="text-sm font-bold text-white">{title}</div>
+        <div className="text-xs text-slate-400">{count} work order{count !== 1 ? "s" : ""}</div>
+      </div>
+      <ArrowRight size={16} className="text-slate-600 group-hover:text-slate-400 group-hover:translate-x-1 transition-all" />
+    </button>
+  );
+}
+
+function StatusDot({ status }: { status: string }) {
+  const color =
+    status === "Overdue" ? "bg-red-500" :
+    status === "Due Soon" ? "bg-orange-500" :
+    status === "On Hold" ? "bg-amber-500" :
+    status === "Completed" ? "bg-emerald-500" :
+    "bg-slate-500";
+  
+  return (
+    <div className={`h-2.5 w-2.5 rounded-full ${color} ${status === "Overdue" ? "animate-pulse" : ""}`} />
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const tone =
+    status === "Overdue" ? "danger" :
+    status === "Due Soon" ? "warn" :
+    status === "On Hold" ? "warn" :
+    status === "Completed" ? "success" :
+    "neutral";
+  return <Pill tone={tone}>{status}</Pill>;
+}
+
+function MiniPill({ children, color }: { children: React.ReactNode; color: "emerald" | "amber" | "red" }) {
+  const colors = {
+    emerald: "bg-emerald-500/20 text-emerald-400",
+    amber: "bg-amber-500/20 text-amber-400",
+    red: "bg-red-500/20 text-red-400",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${colors[color]}`}>
+      {children}
+    </span>
   );
 }
