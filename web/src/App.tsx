@@ -7,6 +7,8 @@ import GeneratorView from "./pages/GeneratorView";
 import WorkOrders from "./pages/WorkOrders";
 import UploadData from "./pages/UploadData";
 import TodayPage from "./pages/Today";
+import MyTasksPage from "./pages/MyTasks";
+import EscalatedPage from "./pages/Escalated";
 
 import {
   LayoutGrid,
@@ -15,11 +17,15 @@ import {
   Upload,
   Zap,
   CalendarDays,
+  User,
+  AlertTriangle,
 } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid },
   { to: "/today", label: "Today", icon: CalendarDays },
+  { to: "/my-tasks", label: "My Tasks", icon: User },
+  { to: "/escalated", label: "Escalated", icon: AlertTriangle },
   { to: "/buildings", label: "Buildings", icon: Building2 },
   { to: "/work-orders", label: "Work Orders", icon: ClipboardList },
   { to: "/upload", label: "Upload Data", icon: Upload },
@@ -95,6 +101,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/today" element={<TodayPage />} />
+              <Route path="/my-tasks" element={<MyTasksPage />} />
+              <Route path="/escalated" element={<EscalatedPage />} />
               <Route path="/buildings" element={<Buildings />} />
               <Route path="/buildings/:buildingId" element={<BuildingView />} />
               <Route path="/generators/:buildingId/:generatorId" element={<GeneratorView />} />
